@@ -1,0 +1,11 @@
+# Runs PROGRAM and compares what it writes with the file EXPECTED, line endings aside.
+execute_process(COMMAND ${PROGRAM} OUTPUT_VARIABLE out RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+  message(FATAL_ERROR "${PROGRAM} exited with ${status}")
+endif()
+file(READ ${EXPECTED} want)
+string(REPLACE "\r\n" "\n" out "${out}")
+string(REPLACE "\r\n" "\n" want "${want}")
+if(NOT out STREQUAL want)
+  message(FATAL_ERROR "The output differs from ${EXPECTED}:\n${out}")
+endif()
