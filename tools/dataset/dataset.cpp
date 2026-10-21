@@ -10,12 +10,14 @@
 // build with CRE_CPP_COMPETITORS has, are judged over UTF-16 through their exec (see engines.hpp).
 //
 // Each record is asked about under each grammar V8 found it valid in: the record's flags with u added (the unicode
-// answers), the record's flags alone (the legacy answers) and, in the file that has them, the flags with v added (the
+// answers), the record's flags alone (the legacy answers) and, in a record that has them, the flags with v added (the
 // unicode_sets answers). A text is matched as UTF-16 and as UTF-8; a text with a lone surrogate has no UTF-8 form and
-// is matched as UTF-16 alone. Records marked v8_deviation are left out. Any difference from V8 is a wrong answer; a
-// refusal of a valid pattern, an acceptance of an invalid one, and a match that reaches its limit are counted apart and
-// listed too. captures.jsonl is judged on exec, the global search, the sticky flag, replace and split. A match is
-// given 2 seconds.
+// is matched as UTF-16 alone. Records and tests marked v8_deviation are left out, but for those marked unicode-version,
+// where V8 has the Unicode of 16 and test262 that of 17: this library has Unicode 17, so they are judged by test262's
+// verdicts (test262_valid) and answers (test262_answer) in the grammars those name, and left out in the others. The
+// other engines are not judged on them. Any difference from V8 is a wrong answer; a refusal of a valid pattern, an
+// acceptance of an invalid one, and a match that reaches its limit are counted apart and listed too. captures.jsonl is
+// judged on exec, the global search, the sticky flag, replace and split. A match is given 2 seconds.
 #include <corvus/regex_ecma262.hpp>
 
 #include <algorithm>
@@ -301,12 +303,45 @@ std::vector<mode> modes_of(const json* r) {
     return out;
 }
 
+// Whether a deviation is judged by test262's answers: one of the Unicode version, by this library, which has the
+// Unicode of test262.
+bool by_test262(const json* marked, const options& o) {
+    return !o.exec && units(json_string(json_get(marked, "deviation"))) == u"unicode-version";
+}
+
+// Whether a record is left out: one marked v8_deviation that is not judged by test262's answers.
+bool skipped_record(const json* r, const options& o) {
+    return json_is_true(json_get(r, "v8_deviation")) && !by_test262(r, o);
+}
+
+// The modes a record is judged in, with the verdict expected in each: a record marked for the Unicode version is
+// judged in the grammars test262 gives a verdict for, by it.
+std::vector<mode> judged_modes(const json* r, const options& o) {
+    std::vector<mode> all = modes_of(r);
+    if (!json_is_true(json_get(r, "v8_deviation")) || !by_test262(r, o)) return all;
+    const json* valid = json_get(r, "test262_valid");
+    std::vector<mode> out;
+    for (mode m : all) {
+        if (json_as_bool(json_get(valid, m.answer), &m.valid)) out.push_back(m);
+    }
+    return out;
+}
+
+// The answers a test is judged by in a record: test262's for a test marked for the Unicode version, or any test of a
+// record so marked; nullptr for a test marked otherwise, which is left out.
+const json* answers_of(const json* r, const json* test, const options& o) {
+    bool marked = json_is_true(json_get(test, "v8_deviation"));
+    if (marked && !by_test262(test, o)) return nullptr;
+    bool record_by_test262 = json_is_true(json_get(r, "v8_deviation")) && by_test262(r, o);
+    return marked || record_by_test262 ? json_get(test, "test262_answer") : test;
+}
+
 void judge_tests(const std::string& name, const json* r, std::u16string_view pattern, const options& o, counts& c,
                  std::vector<std::string>& w) {
     std::string flags = utf8_lossy(units(json_string(json_get(r, "flags"))));
     std::string pattern_shown = shown(pattern);
     const json* tests = json_get(r, "tests");
-    for (const mode& m : modes_of(r)) {
+    for (const mode& m : judged_modes(r, o)) {
         std::string mode_flags = flags + m.suffix;
         bool is_error;
         std::string message;
@@ -327,8 +362,10 @@ void judge_tests(const std::string& name, const json* r, std::u16string_view pat
         }
         for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
             const json* test = &tests->items[t];
+            // A test marked for the Unicode version, or any test of a record so marked, is judged by test262's answer
+            // in this grammar, and left out where it has none. A test marked otherwise is left out.
             bool expected;
-            if (!json_as_bool(json_get(test, m.answer), &expected)) continue;
+            if (!json_as_bool(json_get(answers_of(r, test, o), m.answer), &expected)) continue;
             const json* text_j = json_string(json_get(test, "text"));
             if (!text_j) continue;
             std::u16string_view text = units(text_j);
@@ -812,7 +849,7 @@ bool glob(std::string_view pattern, std::string_view name) {
 // as unanswered, every answer it asks, and its child is replaced by one that goes on from the next record.
 
 // The answers a record asks of an engine over UTF-16 alone: what an unanswered record counts as reaching a limit.
-long long answers_asked(const std::string& name, const json* r) {
+long long answers_asked(const std::string& name, const json* r, const options& o) {
     long long n = 0;
     const json* tests = json_get(r, "tests");
     if (name == "captures.jsonl") {
@@ -828,11 +865,11 @@ long long answers_asked(const std::string& name, const json* r) {
         }
         return n;
     }
-    for (const mode& m : modes_of(r)) {
+    for (const mode& m : judged_modes(r, o)) {
         if (!m.valid) continue;
         for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
             bool expected;
-            if (json_as_bool(json_get(&tests->items[t], m.answer), &expected) &&
+            if (json_as_bool(json_get(answers_of(r, &tests->items[t], o), m.answer), &expected) &&
                 json_string(json_get(&tests->items[t], "text"))) {
                 n++;
             }
@@ -862,7 +899,7 @@ int run_child(const std::string& directory, const std::string& name, const optio
                 std::fprintf(stderr, "%s:%zu: %s\n", name.c_str(), index + 1, error);
                 return 2;
             }
-            if (json_is_true(json_get(r, "v8_deviation"))) {
+            if (skipped_record(r, o)) {
                 std::printf("S\n");
             } else {
                 counts c;
@@ -886,7 +923,7 @@ int run_child(const std::string& directory, const std::string& name, const optio
 // The parent's side of one worker: records first to last of a file, through as many children as it takes.
 void supervise(const std::vector<std::string>& child_args, const std::string& name,
                const std::vector<std::string_view>& lines, size_t first, size_t last, double record_seconds,
-               counts& c, std::vector<std::string>& w, long long& records, long long& skipped) {
+               const options& o, counts& c, std::vector<std::string>& w, long long& records, long long& skipped) {
     size_t start = first;
     while (start < last) {
         int fd[2];
@@ -964,11 +1001,11 @@ void supervise(const std::vector<std::string>& child_args, const std::string& na
         json_arena* arena;
         const char* error;
         json* r = json_parse(lines[lost].data(), lines[lost].size(), &arena, &error);
-        if (r && json_is_true(json_get(r, "v8_deviation"))) {
+        if (r && skipped_record(r, o)) {
             skipped++;
         } else if (r) {
             records++;
-            c.limited += answers_asked(name, r);
+            c.limited += answers_asked(name, r, o);
             char what[64];
             std::snprintf(what, sizeof what, timed_out ? "no answer in %.0f s" : "the engine stopped", record_seconds);
             w.push_back("LIMIT\t" + name + "\trecord " + std::to_string(lost + 1) + "\t" + what);
@@ -1092,7 +1129,7 @@ int main(int argc, char** argv) {
                     std::fprintf(stderr, "%s:%zu: %s\n", name.c_str(), k + 1, error);
                     std::exit(2);
                 }
-                if (json_is_true(json_get(r, "v8_deviation"))) {
+                if (skipped_record(r, o)) {
                     skip++;
                 } else {
                     rec++;
@@ -1120,7 +1157,7 @@ int main(int argc, char** argv) {
                     counts c;
                     std::vector<std::string> w;
                     long long rec = 0, skip = 0;
-                    supervise(child_args, name, lines, first, last, record_seconds, c, w, rec, skip);
+                    supervise(child_args, name, lines, first, last, record_seconds, o, c, w, rec, skip);
                     std::lock_guard<std::mutex> g(lock);
                     file_total.add(c);
                     wrong.insert(wrong.end(), std::make_move_iterator(w.begin()), std::make_move_iterator(w.end()));

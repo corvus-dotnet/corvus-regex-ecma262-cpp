@@ -1,5 +1,5 @@
 // The ECMA-262 test data's test answers judged against the V8 of this Node, as tools/src/bin/dataset.rs judges an
-// engine: each record under each grammar V8 found it valid in when the data was written (u, none, and v in the file
+// engine: each record under each grammar V8 found it valid in when the data was written (u, none, and v in a record
 // that has it), every text as a JavaScript string (UTF-16), records and tests marked v8_deviation left out.
 // captures.jsonl is judged on exec, the global search, the sticky flag, replace, replaceAll, split and split3, each
 // one answer, as the Rust runner judges an engine over UTF-16. With the Node the data was written with (24.11.0),
