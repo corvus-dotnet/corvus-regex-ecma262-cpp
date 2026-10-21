@@ -4,12 +4,18 @@
 # is checked against the hash recorded here.
 set(CRE_C_VERSION 0.1.1)
 
-vcpkg_from_github(
-    OUT_SOURCE_PATH SOURCE_PATH
-    REPO corvus-dotnet/corvus-regex-ecma262-cpp
-    REF "v${VERSION}"
-    SHA512 0
-    HEAD_REF main)
+# CORVUS_REGEX_ECMA262_CPP_SOURCE (passed through with VCPKG_KEEP_ENV_VARS) builds the port from a checkout instead,
+# as this repository's CI does to test the port with the commit it runs on.
+if(DEFINED ENV{CORVUS_REGEX_ECMA262_CPP_SOURCE})
+    set(SOURCE_PATH "$ENV{CORVUS_REGEX_ECMA262_CPP_SOURCE}")
+else()
+    vcpkg_from_github(
+        OUT_SOURCE_PATH SOURCE_PATH
+        REPO corvus-dotnet/corvus-regex-ecma262-cpp
+        REF "v${VERSION}"
+        SHA512 0
+        HEAD_REF main)
+endif()
 
 if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
     set(cre_arch x86_64)

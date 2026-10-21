@@ -14,6 +14,7 @@ add_executable(dataset dataset/dataset.cpp dataset/engines.cpp)
 target_link_libraries(dataset PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp_static cre_cpp_json Threads::Threads)
 if(MSVC)
   target_compile_options(dataset PRIVATE /W4 /WX /permissive- /utf-8 /bigobj /wd4100)
+  target_compile_definitions(dataset PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 else()
   target_compile_options(dataset PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter)
   # libstdc++'s <regex> trips GCC's maybe-uninitialized analysis in its own std::function members.

@@ -609,7 +609,9 @@ void judge_mode_exec(judge& j, const json* a, std::u16string_view text, dataset:
         return got == result::yes ? 1 : 0;
     };
 
-    [&] {
+    // The answers in order, a lambda so that the first answer never given ends them (MSVC reads a lambda called where
+    // it is written, at the start of a statement, as an attribute, so it is named first).
+    auto answer_all = [&] {
         exec_answer want = exec_of(json_get(a, "exec"));
         int rc = exec(re, 0, groups.data());
         if (rc < 0) return;
@@ -707,7 +709,8 @@ void judge_mode_exec(judge& j, const json* a, std::u16string_view text, dataset:
             }
             j.check(k == 0 ? "split" : "split3", same_split(json_get(a, k == 0 ? "split" : "split3"), out));
         }
-    }();
+    };
+    answer_all();
 
     if (failure == result::limit || failure == result::error) {
         // Each of the seven answers (six for an empty text, which has no sticky answer) not given.

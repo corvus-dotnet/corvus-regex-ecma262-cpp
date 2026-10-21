@@ -108,13 +108,15 @@ jobs:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         persist-credentials: false
-    - name: The vcpkg port (from main, --head) and a consumer built with it
-      # On a pull request --head builds main, not the pull request; the push to main checks the change.
-      if: github.event_name != 'pull_request'
+    - name: The vcpkg port (from this checkout) and a consumer built with it
       shell: bash
+      env:
+        VCPKG_KEEP_ENV_VARS: CORVUS_REGEX_ECMA262_CPP_SOURCE
       run: |
+        # A Windows path on Windows (Git Bash's own form is /d/a/...).
+        if command -v cygpath >/dev/null; then export CORVUS_REGEX_ECMA262_CPP_SOURCE="$(cygpath -m "$PWD")"; else export CORVUS_REGEX_ECMA262_CPP_SOURCE="$PWD"; fi
         vcpkg="${VCPKG_INSTALLATION_ROOT}/vcpkg"
-        "$vcpkg" install corvus-regex-ecma262-cpp --overlay-ports="$PWD/ports" --head
+        "$vcpkg" install corvus-regex-ecma262-cpp --overlay-ports="$PWD/ports"
         cmake -S tests/consumer -B build-vcpkg -DCMAKE_BUILD_TYPE=Release           -DCMAKE_TOOLCHAIN_FILE="${VCPKG_INSTALLATION_ROOT}/scripts/buildsystems/vcpkg.cmake"
         cmake --build build-vcpkg --config Release
         if [ -f build-vcpkg/Release/consumer.exe ]; then program=build-vcpkg/Release/consumer.exe; else program=build-vcpkg/consumer; fi
