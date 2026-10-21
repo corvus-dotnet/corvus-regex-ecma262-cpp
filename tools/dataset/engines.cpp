@@ -129,7 +129,10 @@ class std_regex final : public exec_regex {
 
     std::size_t groups() const override { return re_.mark_count() + 1; }
     bool unicode() const override { return unicode_; }
-    std::u16string_view name(std::size_t g) const override { return g < names_.size() ? names_[g] : u""; }
+    // A view of the name itself: with u"" as the other arm, the conditional's type is a temporary u16string.
+    std::u16string_view name(std::size_t g) const override {
+        return g < names_.size() ? std::u16string_view(names_[g]) : std::u16string_view();
+    }
 
     result exec(std::u16string_view text, std::size_t from, std::size_t* out, const char** why) override {
         const wide_text& t = cache_.of(text, unicode_);
@@ -205,7 +208,10 @@ class boost_regex final : public exec_regex {
 
     std::size_t groups() const override { return re_.mark_count() + 1; }
     bool unicode() const override { return unicode_; }
-    std::u16string_view name(std::size_t g) const override { return g < names_.size() ? names_[g] : u""; }
+    // A view of the name itself: with u"" as the other arm, the conditional's type is a temporary u16string.
+    std::u16string_view name(std::size_t g) const override {
+        return g < names_.size() ? std::u16string_view(names_[g]) : std::u16string_view();
+    }
 
     result exec(std::u16string_view text, std::size_t from, std::size_t* out, const char** why) override {
         const wide_text& t = cache_.of(text, unicode_);
@@ -290,7 +296,10 @@ class srell_regex final : public exec_regex {
 
     std::size_t groups() const override { return re_.mark_count() + 1; }
     bool unicode() const override { return unicode_; }
-    std::u16string_view name(std::size_t g) const override { return g < names_.size() ? names_[g] : u""; }
+    // A view of the name itself: with u"" as the other arm, the conditional's type is a temporary u16string.
+    std::u16string_view name(std::size_t g) const override {
+        return g < names_.size() ? std::u16string_view(names_[g]) : std::u16string_view();
+    }
 
     result exec(std::u16string_view text, std::size_t from, std::size_t* out, const char** why) override {
         const Char* begin;
