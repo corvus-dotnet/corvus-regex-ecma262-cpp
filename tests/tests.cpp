@@ -8,6 +8,14 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+
 namespace re = corvus::ecma262;
 
 static int failures = 0;
@@ -318,6 +326,48 @@ static void threads() {
     for (std::size_t c : counts) CHECK(c == 20 * 2000);
 }
 
+// Runs f on a thread with a stack of 256 KB, as a host's thread may have (std::thread cannot be given a stack size).
+static void on_small_stack(void (*f)()) {
+    constexpr std::size_t size = 256 * 1024;
+#ifdef _WIN32
+    HANDLE thread = CreateThread(nullptr, size, [](LPVOID p) -> DWORD { reinterpret_cast<void (*)()>(p)(); return 0; },
+                                 reinterpret_cast<LPVOID>(f), STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    CHECK(thread != nullptr);
+    if (thread == nullptr) return;
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+#else
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    CHECK(pthread_attr_setstacksize(&attr, size) == 0);
+    pthread_t thread;
+    auto start = [](void* p) -> void* {
+        reinterpret_cast<void (*)()>(p)();
+        return nullptr;
+    };
+    int created = pthread_create(&thread, &attr, start, reinterpret_cast<void*>(f));
+    pthread_attr_destroy(&attr);
+    CHECK(created == 0);
+    if (created == 0) pthread_join(thread, nullptr);
+#endif
+}
+
+static void nested_classes() {
+    // With v a class holds classes, and the parser recurses once per level. A pattern of nested classes is read on the
+    // library's own deep stack, not the caller's, so on a small stack the deepest nesting the library allows compiles
+    // and matches, and a deeper one is refused as too large instead of overflowing the stack and ending the process.
+    // This needs the C library 0.1.2: with 0.1.1 it crashes the test program.
+    std::string deepest = std::string(CRE_MAX_NESTING, '[') + "a" + std::string(CRE_MAX_NESTING, ']');
+    re::regex r(deepest, "v");
+    CHECK(r.is_match("a"));
+    CHECK(!r.is_match("b"));
+    CHECK(r.is_match(u"a"));
+    auto m = r.find("xa");
+    CHECK(m && m->start == 1 && m->end == 2);
+    CHECK(throws(re::errc::pattern_too_large, [] { re::regex(std::string(200000, '['), "v"); }));
+    CHECK(!re::regex::is_valid(std::string(200000, '['), "v"));
+}
+
 int main() {
     CHECK(re::library_version().size() >= 5);
     CHECK(CORVUS_REGEX_ECMA262_CPP_VERSION_MAJOR == CRE_VERSION_MAJOR);
@@ -331,6 +381,7 @@ int main() {
     splitting();
     limits();
     threads();
+    on_small_stack(nested_classes);
     std::printf("%d checks, %d failed\n", checks, failures);
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
