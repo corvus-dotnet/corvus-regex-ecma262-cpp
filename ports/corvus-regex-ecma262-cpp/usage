@@ -1,0 +1,4 @@
+corvus-regex-ecma262-cpp provides CMake targets:
+
+  find_package(corvus_regex_ecma262_cpp CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)

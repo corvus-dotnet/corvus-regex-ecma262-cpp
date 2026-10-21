@@ -1,0 +1,31 @@
+# The corvus-regex-ecma262 C++ library from vcpkg: the header over the C library this triplet links, as
+#   corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp (and, by the name the CMake package also gives it,
+#   corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp_static).
+get_filename_component(_cre_prefix "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+if(NOT TARGET corvus_regex_ecma262_cpp::corvus_regex_ecma262_c)
+  if("@VCPKG_LIBRARY_LINKAGE@" STREQUAL "dynamic")
+    add_library(corvus_regex_ecma262_cpp::corvus_regex_ecma262_c SHARED IMPORTED)
+    if(WIN32)
+      set_target_properties(corvus_regex_ecma262_cpp::corvus_regex_ecma262_c PROPERTIES
+        IMPORTED_LOCATION "${_cre_prefix}/bin/corvus_regex_ecma262.dll"
+        IMPORTED_IMPLIB "${_cre_prefix}/lib/@cre_library@")
+    else()
+      set_target_properties(corvus_regex_ecma262_cpp::corvus_regex_ecma262_c PROPERTIES
+        IMPORTED_LOCATION "${_cre_prefix}/lib/@cre_library@")
+    endif()
+  else()
+    add_library(corvus_regex_ecma262_cpp::corvus_regex_ecma262_c STATIC IMPORTED)
+    set_target_properties(corvus_regex_ecma262_cpp::corvus_regex_ecma262_c PROPERTIES
+      IMPORTED_LOCATION "${_cre_prefix}/lib/@cre_library@"
+      INTERFACE_LINK_LIBRARIES "@cre_system_libraries@")
+  endif()
+  set_target_properties(corvus_regex_ecma262_cpp::corvus_regex_ecma262_c PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${_cre_prefix}/include")
+  foreach(_cre_name corvus_regex_ecma262_cpp corvus_regex_ecma262_cpp_static)
+    add_library(corvus_regex_ecma262_cpp::${_cre_name} INTERFACE IMPORTED)
+    set_target_properties(corvus_regex_ecma262_cpp::${_cre_name} PROPERTIES
+      INTERFACE_LINK_LIBRARIES corvus_regex_ecma262_cpp::corvus_regex_ecma262_c
+      INTERFACE_COMPILE_FEATURES cxx_std_20)
+  endforeach()
+endif()
+unset(_cre_prefix)

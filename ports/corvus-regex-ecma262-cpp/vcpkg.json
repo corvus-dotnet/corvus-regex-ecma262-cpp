@@ -1,0 +1,8 @@
+{
+  "name": "corvus-regex-ecma262-cpp",
+  "version": "0.1.1",
+  "description": "ECMA-262 (JavaScript) regular expressions for C++20: a header-only library over the corvus-regex-ecma262 C library, UTF-8 and UTF-16, every flag.",
+  "homepage": "https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp",
+  "license": "Apache-2.0",
+  "supports": "(x64 | arm64) & (linux | osx | windows) & !uwp & !mingw"
+}

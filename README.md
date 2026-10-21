@@ -54,6 +54,10 @@ find_package(corvus_regex_ecma262_cpp 0.1 CONFIG REQUIRED)
 To use a C library you built or unpacked yourself, put its directory on `CMAKE_PREFIX_PATH`; with
 `-DCORVUS_REGEX_ECMA262_FETCH=OFF` the build never downloads.
 
+The repository also has a vcpkg port (`ports/corvus-regex-ecma262-cpp`, for `--overlay-ports`) and a Conan recipe
+(`conanfile.py`: `conan create .`), each with the same CMake targets, which CI builds a consumer with on Linux, macOS
+and Windows.
+
 ## Getting started
 
 ```cpp
