@@ -311,7 +311,7 @@ using u16captures = basic_captures<char16_t>;
 // A global search of one text, as matchAll makes one, as a range of match: after an empty match the search goes on
 // one character later (one code point with u or v, one UTF-16 code unit without), and with the y flag each match
 // must start where the one before it ended. It reads the matches from the library in batches. It is an input
-// range: it is read once, and begin() may be called once.
+// range: it is read once, and begin() may be called once (again after reset()).
 template <class C>
 class basic_match_range : public std::ranges::view_interface<basic_match_range<C>> {
     static constexpr std::size_t batch = 256;
@@ -374,6 +374,15 @@ class basic_match_range : public std::ranges::view_interface<basic_match_range<C
     }
 
     std::default_sentinel_t end() const noexcept { return {}; }
+
+    // Starts the search again at the start of its text, which is not checked again (as setting lastIndex to 0), so
+    // that the same text can be searched again without a new search: begin() may then be called once more.
+    void reset() noexcept {
+        cre_matches_reset(s_->handle.get());
+        s_->count = 0;
+        s_->at = 0;
+        s_->done = false;
+    }
 
     // Every match, into a vector.
     std::vector<match> to_vector() {

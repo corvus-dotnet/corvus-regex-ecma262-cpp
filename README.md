@@ -17,8 +17,11 @@ over the [corvus-regex-ecma262](https://github.com/corvus-dotnet/corvus-regex-ec
 - A pattern without a backreference is matched in time proportional to its size times the text, and a match can be
   given a limit of time, so neither a pattern nor a text from outside can make a program hang.
 
-**Compliance.** The C library gives 23,647,077 right answers and none wrong over the
-[ECMA-262 test data](https://github.com/corvus-dotnet/ecma262-regex-test-data), over UTF-8 and UTF-16.
+**Compliance.** Through this header, over the
+[ECMA-262 test data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about 109,547 patterns
+and 5,325,026 texts, `exec`, the global search, `replace` and `split` among them), the library gives 23,647,077 right
+answers and none wrong, refuses no valid pattern, accepts no invalid one and reaches no limit, over UTF-8 and UTF-16.
+CI runs the whole data on Linux and Windows on every change.
 
 ## Install
 
@@ -134,6 +137,11 @@ nightly on one runner with every other Corvus ECMA-262 engine.
 - `include/corvus/regex_ecma262.hpp`: the library.
 - `cmake/`: the package, and the download of the C library's archive (`FetchCLibrary.cmake`, with each archive's hash).
 - `tests/`: the tests, and a consumer project built against the installed package; `examples/`: the README's example.
+- `tools/dataset`: the data-set runner, which judges this library (or, built with `-DCRE_CPP_COMPETITORS=ON`,
+  std::regex, Boost.Regex or SRELL) by the test data's own rule: `cmake -S . -B build -DCRE_CPP_TOOLS=ON`, then
+  `build/tools/dataset <ecma262-regex-test-data>/data wrong.tsv [--engine std|boost|srell --isolate on]`.
+- `tools/bench`: the benchmark harness and the script the image runs (`tools/bench/run.sh`), under the interleaved
+  protocol every Corvus ECMA-262 engine's harness follows; `Dockerfile`: the image the central page runs.
 
 ## Licence
 

@@ -209,6 +209,15 @@ static void global_search() {
     CHECK(ordered);
     CHECK(a.find_all(many).to_vector().size() == 1000);
 
+    // reset() starts the same search again, part read or read to its end.
+    auto again = a.find_all(many);
+    auto first = again.begin();
+    CHECK(first != std::default_sentinel && (*first).start == 0);
+    again.reset();
+    CHECK(again.to_vector().size() == 1000);
+    again.reset();
+    CHECK(again.to_vector().size() == 1000);
+
     // After an empty match the search goes on one code point later with u, one code unit without.
     re::regex empty("", "gu");
     CHECK(empty.find_all("\U0001F600").to_vector().size() == 2);

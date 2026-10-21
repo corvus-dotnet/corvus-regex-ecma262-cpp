@@ -15,6 +15,9 @@ project(corvus_regex_ecma262_cpp VERSION 0.1.1 LANGUAGES CXX)
 option(CORVUS_REGEX_ECMA262_FETCH "Download the C library's release archive when find_package does not find it" ON)
 option(CORVUS_REGEX_ECMA262_CPP_TESTS "Build the tests and the examples" ${PROJECT_IS_TOP_LEVEL})
 option(CORVUS_REGEX_ECMA262_CPP_INSTALL "Generate the install rules" ${PROJECT_IS_TOP_LEVEL})
+option(CRE_CPP_TOOLS "Build the data-set runner (tools/)" OFF)
+option(CRE_CPP_COMPETITORS "Build the tools with std::regex, Boost.Regex and SRELL beside this library" OFF)
+option(CRE_CPP_BENCH "Build the Industry benchmark harness (POSIX; needs RE2) with the tools" OFF)
 
 # The C library this header is written against: its version is this library's.
 set(CORVUS_REGEX_ECMA262_C_VERSION ${PROJECT_VERSION})
@@ -51,6 +54,10 @@ if(CORVUS_REGEX_ECMA262_CPP_TESTS)
   enable_testing()
   add_subdirectory(tests)
   add_subdirectory(examples)
+endif()
+
+if(CRE_CPP_TOOLS)
+  add_subdirectory(tools)
 endif()
 
 if(CORVUS_REGEX_ECMA262_CPP_INSTALL)
