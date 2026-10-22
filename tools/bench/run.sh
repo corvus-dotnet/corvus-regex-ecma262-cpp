@@ -34,7 +34,13 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
   cmake --build build/bench -j 4
 fi
 "$bin/dataset" "$data" "$work/wrong-corvus.tsv" > "$work/compliance-corvus.txt" 2>&1 || true
-node tools/benchmarks/v8/dataset.mjs "$data" > "$work/compliance-v8.txt" 2>&1 || true
+# V8=0 (the central run, for every image but one): no V8, whose counts the workloads carry (v8Count).
+v8=(--v8 tools/benchmarks/v8/industry.mjs)
+if [ "${V8:-1}" = 0 ]; then
+  v8=()
+else
+  node tools/benchmarks/v8/dataset.mjs "$data" > "$work/compliance-v8.txt" 2>&1 || true
+fi
 for engine in std boost srell; do
   if [ "${COMPETITOR_COMPLIANCE:-0}" = 1 ]; then
     "$bin/dataset" "$data" "$work/wrong-$engine.tsv" --engine "$engine" --isolate on --record-seconds 10 \
@@ -49,7 +55,7 @@ if [ "${SETTLE:-0}" -gt 0 ]; then
   sleep "$SETTLE"
 fi
 export CORVUS_REGEX_TEXTS="$texts"
-timed "$bin/industry" "$workloads" --v8 tools/benchmarks/v8/industry.mjs --rounds "$rounds" --seconds "$seconds" \
+timed "$bin/industry" "$workloads" "${v8[@]}" --rounds "$rounds" --seconds "$seconds" \
   --passes "$passes" --spread "$spread" --out "$work/run.json" 2> "$work/run.log"
 grep -E '^(SPREAD|COUNT) ' "$work/run.log" || true
 python3 tools/bench/industry-results.py --workloads "$workloads" --run "$work/run.json" --out "$out_file" \
