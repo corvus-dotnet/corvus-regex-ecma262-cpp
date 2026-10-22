@@ -13,7 +13,7 @@ else()
         OUT_SOURCE_PATH SOURCE_PATH
         REPO corvus-dotnet/corvus-regex-ecma262-cpp
         REF "v${VERSION}"
-        SHA512 823eb7fa9ec2a7c64ccbc8f3096427a9105d2ad0f2a77a98491ab974d042025cd4125c7727a626c2f200c554ffd8a7cbd6b8045b3238a807d7a9ff63adbc4ab3
+        SHA512 1890aca59778a01a567704a916fea2870ee414f16f877d155634efa2519185fe40ec5a20b1ba94f6e764f8277e4e6e5a5ac7f59d1eaf1a64c9af9d0a12ebf31b
         HEAD_REF main)
 endif()
 
