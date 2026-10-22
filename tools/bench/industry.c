@@ -48,6 +48,9 @@ static const char *DEFAULT_ENGINES[] = {"corvus-utf8", "corvus-utf16", "std", "b
 
 typedef struct {
     char *id, *pattern, *flags, *file;
+    /* V8's count, which the central run writes into the workloads once, for a run without V8 (V8=0) to check against. */
+    bool has_v8_count;
+    double v8_count;
 } workload;
 
 static char *dup_utf8(const json *s) {
@@ -93,6 +96,11 @@ static workload *load_workloads(const char *path, size_t *count) {
         w[k].pattern = dup_utf8(json_get(o, "pattern"));
         w[k].flags = dup_utf8(json_get(o, "flags"));
         w[k].file = dup_utf8(json_get(o, "file"));
+        const json *v8_count = json_get(o, "v8Count");
+        if (v8_count && v8_count->kind == JSON_NUMBER) {
+            w[k].has_v8_count = true;
+            w[k].v8_count = v8_count->number;
+        }
     }
     *count = all->len;
     json_arena_free(arena);
@@ -590,6 +598,10 @@ int main(int argc, char **argv) {
                 if (v8_index >= 0) {
                     figures *vf = &f[(size_t)v8_index * count + k];
                     if (vf->line) oracle = number_of(vf->line, "count", &v8_ok);
+                } else if (all[k].has_v8_count) {
+                    /* Without V8 in the run, its count as the workloads carry it. */
+                    oracle = all[k].v8_count;
+                    v8_ok = true;
                 }
                 if (v8_ok && oracle != n && strcmp(engines[e], "v8") != 0) {
                     sb_printf(&differ, "%s%s %s %.0f vs V8 %.0f", differ.len ? "; " : "", engines[e], all[k].id, n,
