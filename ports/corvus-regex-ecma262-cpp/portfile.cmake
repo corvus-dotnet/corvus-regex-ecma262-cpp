@@ -2,7 +2,7 @@
 # the archive's shared library for a dynamic triplet, its static library (built for the C runtime the triplet links)
 # for a static one. The C library is Rust, built and tested in its own repository's CI for each platform; the archive
 # is checked against the hash recorded here.
-set(CRE_C_VERSION 0.1.3)
+set(CRE_C_VERSION 0.2.0)
 
 # CORVUS_REGEX_ECMA262_CPP_SOURCE (passed through with VCPKG_KEEP_ENV_VARS) builds the port from a checkout instead,
 # as this repository's CI does to test the port with the commit it runs on.
@@ -32,12 +32,12 @@ else()
     set(cre_target ${cre_arch}-unknown-linux-gnu)
     set(cre_extension tar.gz)
 endif()
-set(cre_sha512_aarch64-apple-darwin deb9ad15f3e78ba3f12139f59017e14a8d366f7a2897c32c9d0ffd6e4e1265a84c2c17c4540df1edeb3e00ee7f9ae6078318251c0728873bfde0108d7b23aaaa)
-set(cre_sha512_aarch64-unknown-linux-gnu 76cdde9c32babe9a48fef7d7d38748daee400afdab3ae35df6005cab8f46bf8479809a17fb113a28867b0c4dbe17e14b332bdf2b51d440da4f22194c10106487)
-set(cre_sha512_x86_64-apple-darwin e935ce1617d9599bdc0fd48570814c6c5ae1c1cce064905912f92985cff144486f117c3d27080236873f28cde0e1dfa9c984e48d40ad759740258a07b85f2779)
-set(cre_sha512_x86_64-unknown-linux-gnu 22a9f304b7578b8b5fa9508f3e20b18647617948e5dd67217fd30eb85630e949ab82e122fe28e96dcd3d70939e72d95b22437b25aebdd784b93555a2381c650b)
-set(cre_sha512_aarch64-pc-windows-msvc fae1a9bf48e48cf710f53eafafee59328ab811c356e749d65f6f209f622edc4d48e144590c7e2fdfbbbab3a2b1cd8c028899ad3d24b8a305aa138b6e68f36a5c)
-set(cre_sha512_x86_64-pc-windows-msvc cfb20a9e205d280ab4c5fbc9f1d64d806865f951c75831be827d72d6b1d92a4086ad439d06b75bef45a06c6ee545569b3bfda70527d4977abaa126dc228ac51d)
+set(cre_sha512_aarch64-apple-darwin 02a094674df043072056d03c732f00094bacbfce99a8bc2fd8d65ac477df83d318997b7dfd860aa17ba69450e6965426c00dba2a3be89d32910a4d9cce3465bf)
+set(cre_sha512_aarch64-unknown-linux-gnu 55d411d54eee734e1d751af1c39682425a266305dcbf60ee91aa5a0e636ca58436ec433abd256fe0e30c8010fcb6871578514d59f003382b1db403233e628b99)
+set(cre_sha512_x86_64-apple-darwin 43e2c62ee4379897ca58a9d771850f6cd84a2e22e06cdaba1c192ae0dbd25296ca945103d3468ad7ceb6a405ba3b0fe70eea1ec68926c34cc9149dc537a1e2d2)
+set(cre_sha512_x86_64-unknown-linux-gnu ae1fb40e0d282cd6d29d566e37923892fcbccccdced75849868f4452f4ec2e757f46a77233589a9200ad75193e8921834c0287015200c6fd502422f50ef4eda5)
+set(cre_sha512_aarch64-pc-windows-msvc 6b966f44800f907dd2c0748c150d1efbb4988bc72a70b5cf0aeb3932aec9efe88a5899834714c01339e8061241793881f686bf9c5c2321e5dfddb7d6e5b7e72f)
+set(cre_sha512_x86_64-pc-windows-msvc 1de05dc1a95fbfb10b805c9131367602f59a582c55d4fe29031bbcb210d523eb77c40ca1ef83adaadd188ed50d9a6c5a71d480ee64bf890889f754f58b9a4fc5)
 
 vcpkg_download_distfile(C_ARCHIVE
     URLS "https://github.com/corvus-dotnet/corvus-regex-ecma262-rs/releases/download/v${CRE_C_VERSION}/corvus-regex-ecma262-${CRE_C_VERSION}-${cre_target}.${cre_extension}"
@@ -90,10 +90,14 @@ endif()
 
 configure_file("${CMAKE_CURRENT_LIST_DIR}/corvus_regex_ecma262_cppConfig.cmake.in"
     "${CURRENT_PACKAGES_DIR}/share/corvus_regex_ecma262_cpp/corvus_regex_ecma262_cppConfig.cmake" @ONLY)
+# The version rule of the CMake package (SameMinorVersion): the port's major and minor version, from its version.
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)" cre_cpp_major_minor "${VERSION}")
+set(cre_cpp_major "${CMAKE_MATCH_1}")
+set(cre_cpp_minor "${CMAKE_MATCH_2}")
 file(WRITE "${CURRENT_PACKAGES_DIR}/share/corvus_regex_ecma262_cpp/corvus_regex_ecma262_cppConfigVersion.cmake"
     "set(PACKAGE_VERSION ${VERSION})
-if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION OR NOT PACKAGE_FIND_VERSION_MAJOR EQUAL 0
-   OR NOT PACKAGE_FIND_VERSION_MINOR EQUAL 1)
+if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION OR NOT PACKAGE_FIND_VERSION_MAJOR EQUAL ${cre_cpp_major}
+   OR NOT PACKAGE_FIND_VERSION_MINOR EQUAL ${cre_cpp_minor})
   set(PACKAGE_VERSION_COMPATIBLE FALSE)
 else()
   set(PACKAGE_VERSION_COMPATIBLE TRUE)

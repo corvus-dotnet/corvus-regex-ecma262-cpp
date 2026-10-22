@@ -19,8 +19,13 @@
 //   match can start or end between the halves of a character beyond the Basic Multilingual Plane; such a position is
 //   the offset of the character's third byte.
 // - Failures throw corvus::ecma262::regex_error, whose code() says why (std::error_code, in ecma262::category()). A
-//   pattern that is not valid is errc::invalid_pattern; a match that reaches its limit of time, given by the
-//   overloads that take a std::chrono::milliseconds, is errc::match_limit.
+//   pattern that is not valid is errc::invalid_pattern; a match that reaches its limit of time or of backtracking
+//   memory is errc::match_limit.
+// - A regex has a match timeout, as a Regex of .NET has: the constructor that takes a std::chrono::milliseconds, or
+//   regex::set_default_match_timeout for every regex made after it (none unless set). Every member that matches gives
+//   each of its matches the timeout, and the overloads that take a std::chrono::milliseconds give one match a limit
+//   of their own. Without a timeout a match has no limit of time or of memory, so give a pattern or a text from
+//   outside one.
 // - A global search (find_all, captures_all) is a range that keeps the regex alive but not the text, as a
 //   std::string_view does not: the text must outlive it.
 //
@@ -49,8 +54,8 @@
 
 // The version of this library; it is the C library's, whose version the header names (CRE_VERSION_*).
 #define CORVUS_REGEX_ECMA262_CPP_VERSION_MAJOR 0
-#define CORVUS_REGEX_ECMA262_CPP_VERSION_MINOR 1
-#define CORVUS_REGEX_ECMA262_CPP_VERSION_PATCH 1
+#define CORVUS_REGEX_ECMA262_CPP_VERSION_MINOR 2
+#define CORVUS_REGEX_ECMA262_CPP_VERSION_PATCH 0
 
 namespace corvus::ecma262 {
 
@@ -244,6 +249,17 @@ std::string utf8_of(std::basic_string_view<C> s) {
 
 inline std::uint64_t millis(std::chrono::milliseconds limit) {
     return limit.count() <= 0 ? 1 : static_cast<std::uint64_t>(limit.count());
+}
+
+// The milliseconds of a match timeout, 0 (none) for zero or less.
+inline std::uint64_t timeout_millis(std::chrono::milliseconds timeout) {
+    return timeout.count() <= 0 ? 0 : static_cast<std::uint64_t>(timeout.count());
+}
+
+// A match timeout from the C library's milliseconds, nullopt for none.
+inline std::optional<std::chrono::milliseconds> timeout_of(std::uint64_t ms) {
+    if (ms == 0) return std::nullopt;
+    return std::chrono::milliseconds(static_cast<std::chrono::milliseconds::rep>(ms));
 }
 
 }  // namespace detail
@@ -479,7 +495,31 @@ class regex {
     // surrogate as U+FFFD.
     template <detail::text P>
     explicit regex(const P& pattern, std::string_view flags = {}) {
-        compile(detail::view(pattern), flags);
+        compile(detail::view(pattern), flags, std::nullopt);
+    }
+
+    // As above, with a match timeout: the time each match may take before it is abandoned with errc::match_limit
+    // (zero for none). A timeout also caps the backtracking memory of a match.
+    template <detail::text P>
+    regex(const P& pattern, std::string_view flags, std::chrono::milliseconds match_timeout) {
+        compile(detail::view(pattern), flags, match_timeout);
+    }
+
+    // Sets the match timeout of every regex made from now on without one of its own, or nullopt (or zero) for none,
+    // the default. It is the process-wide default of .NET's REGEX_DEFAULT_MATCH_TIMEOUT; a program that matches
+    // patterns or texts from outside should set it when it starts. A regex already made keeps its own.
+    static void set_default_match_timeout(std::optional<std::chrono::milliseconds> timeout) noexcept {
+        cre_set_default_match_timeout(timeout ? detail::timeout_millis(*timeout) : 0);
+    }
+
+    // The match timeout of a regex made now without one of its own, or nullopt for none.
+    static std::optional<std::chrono::milliseconds> default_match_timeout() noexcept {
+        return detail::timeout_of(cre_default_match_timeout());
+    }
+
+    // The time each match may take before it is abandoned with errc::match_limit, or nullopt for none.
+    std::optional<std::chrono::milliseconds> match_timeout() const noexcept {
+        return detail::timeout_of(cre_regex_match_timeout(re_.get()));
     }
 
     // Whether a pattern is valid with the flags, without compiling it. A pattern over a limit of size is not valid
@@ -528,8 +568,8 @@ class regex {
         return matched;
     }
 
-    // is_match from the start of the text, with a limit on the time the match may take: errc::match_limit when it
-    // is reached.
+    // is_match from the start of the text, with a limit on the time the match may take in place of the regex's
+    // timeout: errc::match_limit when it is reached.
     template <detail::text T>
     bool is_match(const T& text, std::chrono::milliseconds limit) const {
         auto t = detail::view(text);
@@ -688,10 +728,13 @@ class regex {
     }
 
     template <class C>
-    void compile(std::basic_string_view<C> pattern, std::string_view flags) {
+    void compile(std::basic_string_view<C> pattern, std::string_view flags,
+                 std::optional<std::chrono::milliseconds> timeout) {
         std::string p = pattern_bytes(pattern);
         cre_regex* re = nullptr;
-        detail::check(cre_regex_new(p.data(), p.size(), flags.data(), flags.size(), &re));
+        detail::check(timeout ? cre_regex_new_with_timeout(p.data(), p.size(), flags.data(), flags.size(),
+                                                           detail::timeout_millis(*timeout), &re)
+                              : cre_regex_new(p.data(), p.size(), flags.data(), flags.size(), &re));
         re_ = std::shared_ptr<const cre_regex>(re, [](const cre_regex* r) { cre_regex_free(const_cast<cre_regex*>(r)); });
     }
 

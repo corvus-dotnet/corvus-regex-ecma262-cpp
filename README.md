@@ -14,8 +14,9 @@ over the [corvus-regex-ecma262](https://github.com/corvus-dotnet/corvus-regex-ec
   all; `std::wstring_view` on Windows). Nothing is transcoded, and positions are in the text's own units.
 - `is_match`, `find`, `captures`, a global search as a C++20 range (`find_all`, `captures_all`), `replace` with every
   `$` form of `GetSubstitution`, and `split`, each as `RegExp` and `String.prototype` define it.
-- A pattern without a backreference is matched in time proportional to its size times the text, and a match can be
-  given a limit of time, so neither a pattern nor a text from outside can make a program hang.
+- A pattern without a backreference is matched in time proportional to its size times the text, and a pattern can be
+  given a match timeout, as a `Regex` of .NET can, which every member honours and which caps the backtracking memory
+  too, so with a timeout neither a pattern nor a text from outside can make a program hang.
 
 **Compliance.** Through this header, over the
 [ECMA-262 test data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about 117,889 patterns
@@ -36,7 +37,7 @@ With FetchContent:
 include(FetchContent)
 FetchContent_Declare(corvus_regex_ecma262_cpp
   GIT_REPOSITORY https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp
-  GIT_TAG v0.1.3)
+  GIT_TAG v0.2.0)
 FetchContent_MakeAvailable(corvus_regex_ecma262_cpp)
 
 target_link_libraries(app PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)
@@ -49,7 +50,7 @@ next to your program, for example with `$<TARGET_RUNTIME_DLLS:app>`), and
 Installed, with `cmake --install`, the package is found as any other:
 
 ```cmake
-find_package(corvus_regex_ecma262_cpp 0.1 CONFIG REQUIRED)
+find_package(corvus_regex_ecma262_cpp 0.2 CONFIG REQUIRED)
 ```
 
 To use a C library you built or unpacked yourself, put its directory on `CMAKE_PREFIX_PATH`; with
@@ -97,7 +98,8 @@ The whole example is [examples/basic.cpp](examples/basic.cpp), which CI builds a
 
 | Member | What it does |
 |---|---|
-| `regex(pattern, flags)` | Compiles a pattern as `new RegExp(pattern, flags)` does; throws `regex_error` when it is not valid. |
+| `regex(pattern, flags)`, `regex(pattern, flags, match_timeout)` | Compiles a pattern as `new RegExp(pattern, flags)` does; throws `regex_error` when it is not valid. `match_timeout` is a `std::chrono::milliseconds` (zero for none); without it the regex takes the default. |
+| `regex::set_default_match_timeout(timeout)`, `regex::default_match_timeout()` | The timeout of every regex made without one: none (`nullopt`) unless set. |
 | `regex::is_valid(pattern, flags)` | Whether a pattern is valid, without compiling it. |
 | `is_match(text, start = 0)` | `RegExp.prototype.test` with `lastIndex` at `start` (at `start` alone with `y`). |
 | `find(text, start = 0)` | The first match at or after `start`, as `exec` finds it: an `optional<match>`. |
@@ -108,11 +110,17 @@ The whole example is [examples/basic.cpp](examples/basic.cpp), which CI builds a
 | `replace(text, replacement)` | `String.prototype.replace`: the first match, or every match with `g`. |
 | `replace_all(text, replacement)` | `String.prototype.replaceAll`: every match. |
 | `split(text, limit = no_limit)` | `String.prototype.split`: a vector of `optional<string>`. |
-| `source()`, `flags()`, `group_count()`, `group_names()` | What the pattern is. |
+| `source()`, `flags()`, `match_timeout()`, `group_count()`, `group_names()` | What the pattern is. |
 
 A `match` is a `start` and an `end` in the text's units; a group that did not take part is `npos` to `npos` and is
-`false`, and `m.in(text)` is its part of the text. The `find`, `is_match` and `captures` overloads that take a
-`std::chrono::milliseconds` stop a match that reaches the limit with `errc::match_limit`.
+`false`, and `m.in(text)` is its part of the text.
+
+**Timeouts.** A regex has a match timeout, as a `Regex` of .NET has: `regex(pattern, flags, 1000ms)`, or for every regex
+made after it `regex::set_default_match_timeout(1000ms)`. Every member that matches gives each of its matches the
+timeout, and a match that reaches it, or the cap on backtracking memory that comes with it, throws
+`errc::match_limit`; the `find`, `is_match` and `captures` overloads that take a `std::chrono::milliseconds` give one
+match a limit of their own in its place. Without a timeout (the default) a match has no limit of time or of memory, so
+a program that matches a pattern or a text it did not write should set one.
 
 **Text and positions.** UTF-8 text is checked: text that is not UTF-8 throws `errc::invalid_utf8`, and
 `regex_error::offset()` is the offset of the first bad byte. UTF-16 text is not checked, and may hold lone surrogates.
