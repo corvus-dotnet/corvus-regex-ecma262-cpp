@@ -90,10 +90,14 @@ endif()
 
 configure_file("${CMAKE_CURRENT_LIST_DIR}/corvus_regex_ecma262_cppConfig.cmake.in"
     "${CURRENT_PACKAGES_DIR}/share/corvus_regex_ecma262_cpp/corvus_regex_ecma262_cppConfig.cmake" @ONLY)
+# The version rule of the CMake package (SameMinorVersion): the port's major and minor version, from its version.
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)" cre_cpp_major_minor "${VERSION}")
+set(cre_cpp_major "${CMAKE_MATCH_1}")
+set(cre_cpp_minor "${CMAKE_MATCH_2}")
 file(WRITE "${CURRENT_PACKAGES_DIR}/share/corvus_regex_ecma262_cpp/corvus_regex_ecma262_cppConfigVersion.cmake"
     "set(PACKAGE_VERSION ${VERSION})
-if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION OR NOT PACKAGE_FIND_VERSION_MAJOR EQUAL 0
-   OR NOT PACKAGE_FIND_VERSION_MINOR EQUAL 1)
+if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION OR NOT PACKAGE_FIND_VERSION_MAJOR EQUAL ${cre_cpp_major}
+   OR NOT PACKAGE_FIND_VERSION_MINOR EQUAL ${cre_cpp_minor})
   set(PACKAGE_VERSION_COMPATIBLE FALSE)
 else()
   set(PACKAGE_VERSION_COMPATIBLE TRUE)
