@@ -36,7 +36,7 @@ With FetchContent:
 include(FetchContent)
 FetchContent_Declare(corvus_regex_ecma262_cpp
   GIT_REPOSITORY https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp
-  GIT_TAG v0.1.2)
+  GIT_TAG v0.1.3)
 FetchContent_MakeAvailable(corvus_regex_ecma262_cpp)
 
 target_link_libraries(app PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)
