@@ -50,7 +50,7 @@ next to your program, for example with `$<TARGET_RUNTIME_DLLS:app>`), and
 Installed, with `cmake --install`, the package is found as any other:
 
 ```cmake
-find_package(corvus_regex_ecma262_cpp 0.1 CONFIG REQUIRED)
+find_package(corvus_regex_ecma262_cpp 0.2 CONFIG REQUIRED)
 ```
 
 To use a C library you built or unpacked yourself, put its directory on `CMAKE_PREFIX_PATH`; with

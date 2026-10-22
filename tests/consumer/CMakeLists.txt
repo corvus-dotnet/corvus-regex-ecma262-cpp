@@ -1,7 +1,7 @@
 # A project that uses the installed package as a consumer does: find_package, then the example.
 cmake_minimum_required(VERSION 3.24)
 project(consumer CXX)
-find_package(corvus_regex_ecma262_cpp 0.1 CONFIG REQUIRED)
+find_package(corvus_regex_ecma262_cpp 0.2 CONFIG REQUIRED)
 add_executable(consumer ../../examples/basic.cpp)
 target_link_libraries(consumer PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)
 if(MSVC)
