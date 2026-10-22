@@ -10,7 +10,7 @@
 #
 # or, once installed, find_package(corvus_regex_ecma262_cpp CONFIG REQUIRED) with the same target.
 cmake_minimum_required(VERSION 3.24)
-project(corvus_regex_ecma262_cpp VERSION 0.1.3 LANGUAGES CXX)
+project(corvus_regex_ecma262_cpp VERSION 0.2.0 LANGUAGES CXX)
 
 option(CORVUS_REGEX_ECMA262_FETCH "Download the C library's release archive when find_package does not find it" ON)
 option(CORVUS_REGEX_ECMA262_CPP_TESTS "Build the tests and the examples" ${PROJECT_IS_TOP_LEVEL})

@@ -310,6 +310,55 @@ static void limits() {
     CHECK(!linear.is_match(text, std::chrono::milliseconds(1000)));
 }
 
+static void timeouts() {
+    using std::chrono::milliseconds;
+    const char* never = R"(^(?:(a+)\1*)+$)";
+    std::string text(60, 'a');
+    text += 'b';
+    std::u16string t16(text.begin(), text.end());
+    re::regex timed(never, "u", milliseconds(30));
+    CHECK(timed.match_timeout() == milliseconds(30));
+    // Every member that matches gives its match the regex's timeout.
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.is_match(text); }));
+    re::regex unanchored(R"((?:(a+)\1*)+$)", "u", milliseconds(30));
+    CHECK(throws(re::errc::match_limit, [&] { (void)unanchored.is_match("b" + text, 1); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.find(text); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.captures(text); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.find_all(text).to_vector(); }));
+    CHECK(throws(re::errc::match_limit, [&] {
+        for (const re::captures& c : timed.captures_all(text)) (void)c;
+    }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.replace(text, "x"); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.replace_all(text, "x"); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.split(text); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.is_match(t16); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.find_all(t16).to_vector(); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.replace(t16, u"x"); }));
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.split(t16); }));
+    CHECK(timed.is_match(std::string("aaaa")));
+    CHECK(timed.replace(std::string("aaaa"), "<$&>") == "<aaaa>");
+    // A limit of its own takes the timeout's place for one match.
+    re::regex hour(never, "u", milliseconds(3600000));
+    CHECK(throws(re::errc::match_limit, [&] { (void)hour.is_match(text, milliseconds(30)); }));
+    // A timeout caps the backtracking memory too.
+    re::regex counted("(?:a?){2147483647}", "", milliseconds(3600000));
+    CHECK(throws(re::errc::match_limit, [&] { (void)counted.is_match(std::string()); }));
+    // The default: none unless set, taken by a regex made without one, and kept by one made before.
+    CHECK(!re::regex::default_match_timeout());
+    CHECK(!re::regex("a", "").match_timeout());
+    re::regex::set_default_match_timeout(milliseconds(30));
+    CHECK(re::regex::default_match_timeout() == milliseconds(30));
+    re::regex defaulted(never, "u");
+    re::regex own("a", "", milliseconds(5000));
+    re::regex none("a", "", milliseconds(0));
+    re::regex::set_default_match_timeout(std::nullopt);
+    CHECK(!re::regex::default_match_timeout());
+    CHECK(defaulted.match_timeout() == milliseconds(30));
+    CHECK(throws(re::errc::match_limit, [&] { (void)defaulted.is_match(text); }));
+    CHECK(own.match_timeout() == milliseconds(5000));
+    CHECK(!none.match_timeout());
+}
+
 static void threads() {
     // A regex is immutable: threads share it.
     re::regex r(R"(\w+)", "g");
@@ -380,6 +429,7 @@ int main() {
     replacing();
     splitting();
     limits();
+    timeouts();
     threads();
     on_small_stack(nested_classes);
     std::printf("%d checks, %d failed\n", checks, failures);
