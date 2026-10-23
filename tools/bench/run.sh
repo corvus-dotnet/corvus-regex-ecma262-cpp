@@ -9,9 +9,10 @@
 # It needs a C++20 compiler, CMake, pkg-config with RE2, Python 3 and Node 24 on PATH. ROUNDS, SECONDS_EACH, PASSES,
 # SPREAD and JOB=short are the protocol's (tools/benchmarks/protocol.sh); CORES runs the harness under taskset, SETTLE
 # waits that many seconds before it, SKIP_BUILD=1 takes the tools already built (the image's), RUN_URL names the run,
-# and KEEP copies the run's files to a directory. OTHER_ENGINES_COMPLIANCE=1 works out the compliance of std::regex,
-# Boost.Regex and SRELL again (an hour or more, since many records take them to their limits) rather than take
-# tools/bench/compliance-*.txt.
+# and KEEP copies the run's files to a directory. OTHER_ENGINES_COMPLIANCE=1 works out the compliance of std::regex and
+# SRELL again (an hour or more, since many records take them to their limits) rather than take
+# tools/bench/compliance-*.txt. Boost.Regex implements another dialect (its ECMAScript option is its Perl syntax), so
+# it carries "not ECMA-262", as RE2 does.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/../.." && pwd)"
 abs() { mkdir -p "$(dirname "$1")"; echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; }
@@ -50,7 +51,7 @@ if [ "${V8:-1}" = 0 ]; then
 else
   node tools/benchmarks/v8/dataset.mjs "$data" > "$work/compliance-v8.txt" 2>&1 || true
 fi
-for engine in std boost srell; do
+for engine in std srell; do
   if [ "${OTHER_ENGINES_COMPLIANCE:-0}" = 1 ]; then
     # The commit of the data, when it is a checkout, heads the counts ("data <commit>"), as the checked-in file's does.
     { commit=$(git -C "$data/.." rev-parse HEAD 2>/dev/null) && echo "data $commit"

@@ -14,9 +14,9 @@ time it ended. V8 runs inside the interleaved run and names its engine. Nothing 
 is not said.
 
 Each engine that claims ECMA-262 carries its compliance over the ECMA-262 test data, from the last line of its
-data-set runner: this library's and std::regex's, Boost.Regex's and SRELL's by tools/dataset (the last three over
-UTF-16 through their exec, in child processes, a record with no answer in 10 s counted unanswered), V8's by
-tools/benchmarks/v8/dataset.mjs. RE2 does not claim it, and carries "not ECMA-262".
+data-set runner: this library's and std::regex's and SRELL's by tools/dataset (the last two over UTF-16 through their
+exec, in child processes, a record with no answer in 10 s counted unanswered), V8's by tools/benchmarks/v8/dataset.mjs.
+Boost.Regex (whose ECMAScript option is its Perl syntax) and RE2 implement other dialects, and carry "not ECMA-262".
 """
 import argparse, json, os, re
 
@@ -53,24 +53,32 @@ def compliance(engine, note=None):
     hang or a worker that gave up) is in `limited`, as the judging rule of the test data counts it: the runner's
     limit and errors."""
     path = os.path.join(args.compliance_dir, f"compliance-{engine}.txt")
-    lines = [l for l in open(path, encoding="utf-8").read().splitlines() if l.startswith("records ")]
+    text = open(path, encoding="utf-8").read().splitlines()
+    lines = [l for l in text if l.startswith("records ")]
     if not lines:
         raise SystemExit(f"{path} has no line of counts")
     c = {k: int(v) for k, v in re.findall(r"(right|wrong|refused-valid|accepted-invalid|limit|errors) (\d+)", lines[-1])}
     out = {"right": c["right"], "wrong": c["wrong"], "refused": c["refused-valid"], "acceptedInvalid": c["accepted-invalid"],
            "limited": c.get("limit", 0) + c.get("errors", 0)}
+    # Counts checked in beside the harness name the commit of the test data they were made at on their first line
+    # ("data <commit>"): the page judges them against what that commit asks.
+    if text and text[0].startswith("data ") and len(text[0].split()) == 2:
+        out["dataCommit"] = text[0].split()[1]
     if note:
         out["note"] = note
     return out
 
 
-UTF16_ONLY = ("judged over UTF-16 only, through its exec (replace and split are the runner's), each worker in a child "
-              "process, a record with no answer in 10 s counted unanswered")
+UTF16_ONLY = ("Judged over UTF-16 only, through its exec (replace and split are the runner's), each worker in a child "
+              "process, a record with no answer in 10 s counted unanswered.")
+STD_NOTE = (UTF16_ONLY + " std::regex implements the ECMAScript grammar of ECMA-262's 3rd edition (1999), as the C++ "
+            "standard modifies it: it has no u or v flag, no lookbehind and no named groups, so the data's later "
+            "features count against it.")
 ENGINES = [
     ("corvus-utf8", "corvus-regex-ecma262 UTF-8", "C++", facts.get("corvus-regex-ecma262", ""), compliance("corvus")),
     ("corvus-utf16", "corvus-regex-ecma262 UTF-16", "C++", facts.get("corvus-regex-ecma262", ""), compliance("corvus")),
-    ("std", "std::regex", "C++", facts.get("stdlib", ""), compliance("std", UTF16_ONLY)),
-    ("boost", "Boost.Regex", "C++", facts.get("boost", ""), compliance("boost", UTF16_ONLY)),
+    ("std", "std::regex", "C++", facts.get("stdlib", ""), compliance("std", STD_NOTE)),
+    ("boost", "Boost.Regex", "C++", facts.get("boost", ""), "not ECMA-262"),
     ("srell", "SRELL", "C++", facts.get("srell", ""), compliance("srell", UTF16_ONLY)),
     ("re2", "RE2", "C++", facts.get("re2", ""), "not ECMA-262"),
 ]
@@ -90,8 +98,14 @@ if v8:
     for w in ids:
         r = v8["results"].get(w)
         results[v8_name][w] = {"time": {"median": r["median"], "min": r["min"], "max": r["max"]}} if r and "error" not in r else (failure(r) if r else None)
-# Where RE2 counts otherwise than V8 (the oracle), the row says so; an ECMA-262 engine that does is an error above.
-differs = {w: r["differs"] for w, r in run["results"].get("re2", {}).items() if isinstance(r, dict) and "differs" in r}
+# Where an engine of another dialect (Boost.Regex, RE2) counts otherwise than V8 (the oracle), the workload says so;
+# an ECMA-262 engine that does is an error above.
+differs, differing = {}, set()
+for key, name in (("boost", "Boost.Regex"), ("re2", "RE2")):
+    for w, r in run["results"].get(key, {}).items():
+        if isinstance(r, dict) and "differs" in r:
+            differs[w] = (differs[w] + "; " if w in differs else "") + f"{name}: {r['differs']}"
+            differing.add(name)
 
 TEXTS = {"sherlock": "Sherlock Holmes (0.6 M chars)", "leipzig": "Leipzig corpus (16 M chars)", "mariomka": "mariomka (0.05 M chars)",
          "rebar-ru": "OpenSubtitles ru (1.2 M chars)", "rebar-zh": "OpenSubtitles zh (0.3 M chars)"}
@@ -108,7 +122,7 @@ runtime = "; ".join(x for x in (facts.get("cxx", ""), facts.get("stdlib", ""), v
 
 # The encodings each engine's runner answers in, which the central benchmark page's compliance figure is a share of:
 # every answer the test data asks in those encodings, so an answer the runner did not ask counts against the engine.
-ENCODINGS = {"std": ["utf16"], "boost": ["utf16"], "srell": ["utf16"], "v8": ["utf16"]}
+ENCODINGS = {"std": ["utf16"], "srell": ["utf16"], "v8": ["utf16"]}
 for key, _, _, _, counts in ENGINES:
     if isinstance(counts, dict):
         counts["encodings"] = ENCODINGS.get(key, ["utf16", "utf8"])
@@ -130,11 +144,11 @@ data = {
         "versions": {name: version for _, name, _, version, _ in ENGINES},
         "facts": [["Host", host]] + ([["Runner", runner]] if runner else []) + [["Runtime", runtime], ["Harness", job]]
                  + [["Spread", spread]]
-                 + ([["Counts", "RE2 counts otherwise than V8 on " + str(len(differs)) + " workloads (each says so)"]] if differs else []),
+                 + ([["Counts", " and ".join(sorted(differing)) + " count otherwise than V8 on " + str(len(differs)) + " workloads (each says so)"]] if differs else []),
         "method": "<p>Each figure is one count of every match a global search finds over the whole text, after an empty match going on one character later. "
                   "The C++ library runs with the workload's flags and u, its global search made once per text and walked as a range; "
-                  "std::regex (ECMAScript) and Boost.Regex (its ECMAScript syntax, with ^, $ and . read as ECMA-262 reads them) over the UTF-8 bytes, "
-                  "SRELL over the text as UTF-8, each with the workload's flags; RE2 with the pattern as it is and the flags i, m and s; V8 with gu added.</p>",
+                  "std::regex (ECMAScript) over the UTF-8 bytes and SRELL over the text as UTF-8, each with the workload's flags; "
+                  "Boost.Regex (its Perl syntax) over the UTF-8 bytes and RE2, each with the pattern as it is and the flags i, m and s; V8 with gu added.</p>",
     },
     "vocab": {
         "impl": "engine", "impls": "engines", "Impls": "Engines",

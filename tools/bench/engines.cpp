@@ -4,8 +4,8 @@
 // - corvus-utf8 and corvus-utf16: this library (corvus/regex_ecma262.hpp) over the text as UTF-8 and as UTF-16, with
 //   the workload's flags and u: a global search made once per text, reset for each count, and walked as a range.
 // - std: std::regex with std::regex_constants::ECMAScript, over the UTF-8 bytes (it has no UTF-8 mode).
-// - boost: Boost.Regex in its ECMAScript (Perl) syntax, over the UTF-8 bytes, with match_single_line unless m and
-//   no_mod_s unless s, so that ^, $ and . read as ECMA-262 reads them.
+// - boost: Boost.Regex, which does not implement ECMA-262 (its ECMAScript option is its Perl syntax), given the pattern
+//   as it is over the UTF-8 bytes with the flags i, m and s: icase, match_single_line unless m, no_mod_s unless s.
 // - srell: SRELL, an ECMAScript library, over the text as UTF-8 (u8cregex), with the workload's flags.
 // - re2: RE2, which does not claim ECMA-262, given the pattern as it is with the flags i, m and s.
 //
@@ -226,7 +226,7 @@ extern "C" bool engine_run(const char* engine, const char* pattern, const char* 
 
 extern "C" bool engine_claims_ecma262(const char* engine) {
     std::string_view name = engine;
-    return name != "re2";
+    return name != "re2" && name != "boost";
 }
 
 extern "C" const char* engine_label(const char* engine) {
