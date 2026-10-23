@@ -14,8 +14,8 @@
 // unicode_sets answers). A text is matched as UTF-16 and as UTF-8; a text with a lone surrogate has no UTF-8 form and
 // is matched as UTF-16 alone. Records marked v8_deviation are left out. Any difference from V8 is a wrong answer; a
 // refusal of a valid pattern, an acceptance of an invalid one, and a match that reaches its limit are counted apart and
-// listed too. captures.jsonl is judged on exec, the global search, the sticky flag, replace and split. A match is
-// given 2 seconds.
+// listed too. ill-formed-utf8.jsonl holds bytes that are not UTF-8, which the binding must refuse (errc::invalid_utf8).
+// captures.jsonl is judged on exec, the global search, the sticky flag, replace and split. A match is given 2 seconds.
 #include <corvus/regex_ecma262.hpp>
 
 #include <algorithm>
@@ -248,6 +248,7 @@ compiled compile(const options& o, std::u16string_view pattern, const std::strin
 
 // The answer of a match that throws: a limit (of time or of memory), or an error.
 result failed(const re::regex_error& e, const char** why) {
+    if (e.reason() == re::errc::invalid_utf8) return result::refused;
     if (e.reason() == re::errc::match_limit) {
         *why = std::strstr(e.what(), "memory") ? "memory" : "time";
         return result::limit;
@@ -772,11 +773,75 @@ void judge_captures(const json* r, std::u16string_view pattern, const options& o
     }
 }
 
+// A record of ill-formed-utf8.jsonl: under each grammar the pattern is valid in, each test's bytes, which are not
+// UTF-8, are one answer over UTF-8, and the right one is a refusal (errc::invalid_utf8). An engine with no UTF-8
+// interface is asked nothing.
+void judge_ill_formed(const json* r, std::u16string_view pattern, const options& o, counts& c,
+                      std::vector<std::string>& w) {
+    if (!o.utf8 || o.exec) return;
+    const std::string name = "ill-formed-utf8.jsonl";
+    std::string flags = utf8_lossy(units(json_string(json_get(r, "flags"))));
+    std::string pattern_shown = shown(pattern);
+    const json* tests = json_get(r, "tests");
+    for (const mode& m : modes_of(r)) {
+        std::string mode_flags = flags + m.suffix;
+        bool is_error;
+        std::string message;
+        compiled re = compile(o, pattern, mode_flags, is_error, message);
+        std::string head = name + "\t/" + pattern_shown + "/" + mode_flags;
+        if (!re) {
+            if (is_error) c.errors++;
+            if (m.valid) {
+                c.refused++;
+                w.push_back("REFUSED\t" + head + "\t" + first_line(message));
+            }
+            continue;
+        }
+        if (!m.valid) {
+            c.accepted++;
+            w.push_back("ACCEPTED-INVALID\t" + head);
+            continue;
+        }
+        for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
+            const json* hex_j = json_string(json_get(&tests->items[t], "bytes"));
+            if (!hex_j) continue;
+            std::string hex = utf8_lossy(units(hex_j));
+            std::string bytes;
+            for (size_t k = 0; k + 1 < hex.size(); k += 2) {
+                bytes.push_back(static_cast<char>(std::stoi(hex.substr(k, 2), nullptr, 16)));
+            }
+            const char* why = "";
+            result got = test8(re, bytes, &why);
+            if (got == result::refused) {
+                c.right++;
+                continue;
+            }
+            std::string line;
+            if (got == result::yes || got == result::no) {
+                c.wrong++;
+                line = "WRONG\t" + head + "\t" + hex + "\tutf8\tread as UTF-8 (" +
+                       (got == result::yes ? "matched" : "no match") + "), not refused";
+            } else if (got == result::error) {
+                c.errors++;
+                line = "ERROR\t" + head + "\t" + hex + "\tutf8\t" + why;
+            } else {
+                c.limited++;
+                line = "LIMIT\t" + head + "\t" + hex + "\tutf8\t" + why;
+            }
+            w.push_back(std::move(line));
+        }
+    }
+}
+
 void judge_record(const std::string& name, const json* r, const options& o, counts& c, std::vector<std::string>& w) {
     const json* pattern = json_string(json_get(r, "pattern"));
     if (!pattern) return;
     if (name == "captures.jsonl") {
         if (o.utf16) judge_captures(r, units(pattern), o, c, w);
+        return;
+    }
+    if (name == "ill-formed-utf8.jsonl") {
+        judge_ill_formed(r, units(pattern), o, c, w);
         return;
     }
     judge_tests(name, r, units(pattern), o, c, w);
