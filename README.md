@@ -149,7 +149,7 @@ nightly on one runner with every other Corvus ECMA-262 engine.
 - `include/corvus/regex_ecma262.hpp`: the library.
 - `cmake/`: the package, and the download of the C library's archive (`FetchCLibrary.cmake`, with each archive's hash).
 - `tests/`: the tests, and a consumer project built against the installed package; `examples/`: the README's example.
-- `tools/dataset`: the data-set runner, which judges this library (or, built with `-DCRE_CPP_COMPETITORS=ON`,
+- `tools/dataset`: the data-set runner, which judges this library (or, built with `-DCRE_CPP_OTHER_ENGINES=ON`,
   std::regex, Boost.Regex or SRELL) by the test data's own rule: `cmake -S . -B build -DCRE_CPP_TOOLS=ON`, then
   `build/tools/dataset <ecma262-regex-test-data>/data wrong.tsv [--engine std|boost|srell --isolate on]`.
 - `tools/bench`: the benchmark harness and the script the image runs (`tools/bench/run.sh`), under the interleaved

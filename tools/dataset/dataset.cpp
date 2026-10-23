@@ -7,7 +7,7 @@
 //
 // With --engine corvus (the default) it judges this library, through corvus/regex_ecma262.hpp alone: is_match, find,
 // captures, captures_all, find_all, replace, replace_all and split, over UTF-16 and UTF-8. The other engines, which a
-// build with CRE_CPP_COMPETITORS has, are judged over UTF-16 through their exec (see engines.hpp).
+// build with CRE_CPP_OTHER_ENGINES has, are judged over UTF-16 through their exec (see engines.hpp).
 //
 // Each record is asked about under each grammar V8 found it valid in: the record's flags with u added (the unicode
 // answers), the record's flags alone (the legacy answers) and, in the file that has them, the flags with v added (the

@@ -16,7 +16,7 @@ option(CORVUS_REGEX_ECMA262_FETCH "Download the C library's release archive when
 option(CORVUS_REGEX_ECMA262_CPP_TESTS "Build the tests and the examples" ${PROJECT_IS_TOP_LEVEL})
 option(CORVUS_REGEX_ECMA262_CPP_INSTALL "Generate the install rules" ${PROJECT_IS_TOP_LEVEL})
 option(CRE_CPP_TOOLS "Build the data-set runner (tools/)" OFF)
-option(CRE_CPP_COMPETITORS "Build the tools with std::regex, Boost.Regex and SRELL beside this library" OFF)
+option(CRE_CPP_OTHER_ENGINES "Build the tools with std::regex, Boost.Regex and SRELL beside this library" OFF)
 option(CRE_CPP_BENCH "Build the Industry benchmark harness (POSIX; needs RE2) with the tools" OFF)
 
 # The C library this header is written against: its version is this library's.

@@ -9,7 +9,7 @@
 # It needs a C++20 compiler, CMake, pkg-config with RE2, Python 3 and Node 24 on PATH. ROUNDS, SECONDS_EACH, PASSES,
 # SPREAD and JOB=short are the protocol's (tools/benchmarks/protocol.sh); CORES runs the harness under taskset, SETTLE
 # waits that many seconds before it, SKIP_BUILD=1 takes the tools already built (the image's), RUN_URL names the run,
-# and KEEP copies the run's files to a directory. COMPETITOR_COMPLIANCE=1 works out the compliance of std::regex,
+# and KEEP copies the run's files to a directory. OTHER_ENGINES_COMPLIANCE=1 works out the compliance of std::regex,
 # Boost.Regex and SRELL again (an hour or more, since many records take them to their limits) rather than take
 # tools/bench/compliance-*.txt.
 set -euo pipefail
@@ -51,7 +51,7 @@ else
   node tools/benchmarks/v8/dataset.mjs "$data" > "$work/compliance-v8.txt" 2>&1 || true
 fi
 for engine in std boost srell; do
-  if [ "${COMPETITOR_COMPLIANCE:-0}" = 1 ]; then
+  if [ "${OTHER_ENGINES_COMPLIANCE:-0}" = 1 ]; then
     "$bin/dataset" "$data" "$work/wrong-$engine.tsv" --engine "$engine" --isolate on --record-seconds 10 \
       > "$work/compliance-$engine.txt" 2>&1 || true
   else
