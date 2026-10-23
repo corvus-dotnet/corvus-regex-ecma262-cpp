@@ -5,7 +5,7 @@ for each platform; the archive is checked against the hash recorded here.
 
     conan create . --build=missing
 
-and in a consumer, `corvus-regex-ecma262-cpp/0.2.0` as a requirement, with
+and in a consumer, `corvus-regex-ecma262-cpp/0.2.1` as a requirement, with
 `target_link_libraries(app PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)`.
 """
 import os
@@ -15,22 +15,22 @@ from conan.errors import ConanInvalidConfiguration
 from conan.tools.build import check_min_cppstd
 from conan.tools.files import copy, get
 
-C_VERSION = "0.2.0"
+C_VERSION = "0.2.1"
 C_SHA256 = {
-    "aarch64-apple-darwin": "66849b6f2509103d57b362f39459561f709cd4f8d5f9b31c89f4a9bdf9f82177",
-    "aarch64-pc-windows-msvc": "0cd6092caf85fea61f463edffcd4f3652019d316bdae8320bda81b9e07af99b1",
-    "aarch64-unknown-linux-gnu": "a9a38cbe2c16518dab2d64af37bd6e32d6b8addd13e282d84137414f57b1878b",
-    "aarch64-unknown-linux-musl": "b11868993d36a5771ff36f4f0e09314b019d666b92553f29f379b04d58d976d5",
-    "x86_64-apple-darwin": "eede7cb5ed2a6826c39dd4d7c7212af01da52f8d4297ca05ce29d13a0d0d2e45",
-    "x86_64-pc-windows-msvc": "526399d4ec66f46bf37f7f621232e266c86d24805d2c1b76df2f159bd58dce69",
-    "x86_64-unknown-linux-gnu": "019d911d3713d6f6a3642c3769f828ff35ba02b25738574771ed7ccb30f1644b",
-    "x86_64-unknown-linux-musl": "a29070c0d63af922a85f00dacc94ec625e2e18e879e23caa4d38e2502ac20dd8",
+    "aarch64-apple-darwin": "d44b8baa59db5a13a045c0b0ce480b6e434a3d8b1cc9053625373ffc80b5bbaa",
+    "aarch64-pc-windows-msvc": "08a9411b94ffbe93cef256c539898ef8f309be32e48035fd2ab2d84385e7d768",
+    "aarch64-unknown-linux-gnu": "bebc0379f23754b1674eed3b079d98c4d825dcda85b0af15f432a11802e2f332",
+    "aarch64-unknown-linux-musl": "b53960e72efb64692816789f98d1ed657d742ff57ee01f6bf10b502cb51d0766",
+    "x86_64-apple-darwin": "568d56da2f2a20a91a70b7054bcd5200d6583534c961cc18abdfe98419a0cc5d",
+    "x86_64-pc-windows-msvc": "5201c899b6a28b30184accdae6f3900bf9ddd9332a5b750f33751190b655f274",
+    "x86_64-unknown-linux-gnu": "3b292ba2dac7828b84a0102bdf8463b5c04093f7849efab2b606e5756c39ac49",
+    "x86_64-unknown-linux-musl": "b77dbc5247693a24771978140b61d42ba3107507901e6e81d61e2e2721f6f3e3",
 }
 
 
 class CorvusRegexEcma262CppConan(ConanFile):
     name = "corvus-regex-ecma262-cpp"
-    version = "0.2.0"
+    version = "0.2.1"
     description = ("ECMA-262 (JavaScript) regular expressions for C++20: a header-only library over the "
                    "corvus-regex-ecma262 C library, UTF-8 and UTF-16, every flag.")
     license = "Apache-2.0"

@@ -19,9 +19,9 @@ over the [corvus-regex-ecma262](https://github.com/corvus-dotnet/corvus-regex-ec
   too, so with a timeout neither a pattern nor a text from outside can make a program hang.
 
 **Compliance.** Through this header, over the [ECMA-262 test
-data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about 117,889 patterns and 5,884,566
+data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about 123,087 patterns and 6,056,699
 texts, test262's and `exec`, the global search, `replace` and `split` among them, and texts of bytes that are not UTF-8,
-which it refuses), the library gives 26,953,709 right answers and none wrong, refuses no valid pattern, accepts no
+which it refuses), the library gives 29,289,554 right answers and none wrong, refuses no valid pattern, accepts no
 invalid one and reaches no limit, over UTF-8 and UTF-16. CI runs the whole data on Linux and Windows on every change.
 
 ## Install
@@ -36,7 +36,7 @@ With FetchContent:
 include(FetchContent)
 FetchContent_Declare(corvus_regex_ecma262_cpp
   GIT_REPOSITORY https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp
-  GIT_TAG v0.2.0)
+  GIT_TAG v0.2.1)
 FetchContent_MakeAvailable(corvus_regex_ecma262_cpp)
 
 target_link_libraries(app PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)
@@ -142,7 +142,7 @@ The Industry workloads of dotnet/performance, this library against `std::regex` 
 Boost.Regex, SRELL (an ECMAScript library), RE2 and V8, each engine with its compliance with the test data beside its
 figures, are on the central page,
 [corvus-oss.org/corvus-regex-ecma262-benchmarks](https://corvus-oss.org/corvus-regex-ecma262-benchmarks/), measured
-nightly on one runner with every other Corvus ECMA-262 engine.
+nightly on one runner with the engines of every other source.
 
 ## Repository
 
@@ -153,7 +153,12 @@ nightly on one runner with every other Corvus ECMA-262 engine.
   std::regex, Boost.Regex or SRELL) by the test data's own rule: `cmake -S . -B build -DCRE_CPP_TOOLS=ON`, then
   `build/tools/dataset <ecma262-regex-test-data>/data wrong.tsv [--engine std|boost|srell --isolate on]`.
 - `tools/bench`: the benchmark harness and the script the image runs (`tools/bench/run.sh`), under the interleaved
-  protocol every Corvus ECMA-262 engine's harness follows; `Dockerfile`: the image the central page runs.
+  protocol every harness of the central benchmark page follows; `Dockerfile`: the image the central page runs.
+  std::regex, Boost.Regex and SRELL take too long to judge every night, so their compliance is worked out once
+  (`OTHER_ENGINES_COMPLIANCE=1`) and checked in as `tools/bench/compliance-<engine>.txt`. Each file's first line is the
+  commit of the test data it was made at (`data <commit>`): the page judges the counts against what that commit asks,
+  and CI fails when it is not the commit CI checks the data out at. A change to the harness alone, such as new
+  counts, is released as a harness release (`gh release create harness-<version>.<n> --latest=false`).
 
 ## Licence
 

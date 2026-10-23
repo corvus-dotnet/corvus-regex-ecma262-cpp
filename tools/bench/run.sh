@@ -52,8 +52,10 @@ else
 fi
 for engine in std boost srell; do
   if [ "${OTHER_ENGINES_COMPLIANCE:-0}" = 1 ]; then
-    "$bin/dataset" "$data" "$work/wrong-$engine.tsv" --engine "$engine" --isolate on --record-seconds 10 \
-      > "$work/compliance-$engine.txt" 2>&1 || true
+    # The commit of the data, when it is a checkout, heads the counts ("data <commit>"), as the checked-in file's does.
+    { commit=$(git -C "$data/.." rev-parse HEAD 2>/dev/null) && echo "data $commit"
+      "$bin/dataset" "$data" "$work/wrong-$engine.tsv" --engine "$engine" --isolate on --record-seconds 10 2>&1 || true
+    } > "$work/compliance-$engine.txt"
   else
     cp "tools/bench/compliance-$engine.txt" "$work/compliance-$engine.txt"
   fi
