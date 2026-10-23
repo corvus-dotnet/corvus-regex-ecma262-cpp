@@ -175,6 +175,8 @@ class std_regex final : public exec_regex {
 
 class std_engine final : public exec_engine {
   public:
+    // ECMA-262's 3rd edition as the C++ standard modifies it: no u or v flag.
+    std::vector<std::string> grammars() const override { return {"legacy"}; }
     std::unique_ptr<exec_regex> compile(std::u16string_view pattern, std::string_view flags, refusal& why,
                                         std::string& message) override {
         if (has(flags, 's') || has(flags, 'v')) {
@@ -348,6 +350,9 @@ class srell_regex final : public exec_regex {
 
 class srell_engine final : public exec_engine {
   public:
+    // SRELL always reads a pattern as the u flag does (and as the v flag does with unicodesets): it has no legacy
+    // grammar.
+    std::vector<std::string> grammars() const override { return {"unicode", "unicode_sets"}; }
     std::unique_ptr<exec_regex> compile(std::u16string_view pattern, std::string_view flags, refusal& why,
                                         std::string& message) override {
         bool unicode = has(flags, 'u') || has(flags, 'v');

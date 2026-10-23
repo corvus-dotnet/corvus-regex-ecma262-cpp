@@ -158,7 +158,10 @@ nightly on one runner with the engines of every other source.
   std::regex and SRELL take too long to judge every night, so their compliance is worked out once
   (`OTHER_ENGINES_COMPLIANCE=1`) and checked in as `tools/bench/compliance-<engine>.txt`. Each file's first line is the
   commit of the test data it was made at (`data <commit>`): the page judges the counts against what that commit asks,
-  and CI fails when it is not the commit CI checks the data out at. A change to the harness alone, such as new
+  and CI fails when it is not the commit CI checks the data out at. Each engine is asked under the grammars it
+  implements alone (`grammars()` in `tools/dataset/engines.hpp`): std::regex has no u or v flag, so it is judged in
+  the legacy grammar; SRELL has only the u and v grammars, and its Unicode tables are 18.0, so it is judged in those
+  and by the data's answers for Unicode 18.0 (the test data's overlay). A change to the harness alone, such as new
   counts, is released as a harness release (`gh release create harness-<version>.<n> --latest=false`).
 
 ## Licence

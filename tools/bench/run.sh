@@ -53,9 +53,16 @@ else
 fi
 for engine in std srell; do
   if [ "${OTHER_ENGINES_COMPLIANCE:-0}" = 1 ]; then
+    # SRELL's Unicode tables are 18.0: it is asked the data's answers for that version (the test data's overlay,
+    # applied by its unicode.js, which a clone of the data has beside data/).
+    asked="$data"
+    if [ "$engine" = srell ]; then
+      node "$data/../unicode.js" apply 18.0 "$work/data-unicode-18.0" "$data" > /dev/null
+      asked="$work/data-unicode-18.0"
+    fi
     # The commit of the data, when it is a checkout, heads the counts ("data <commit>"), as the checked-in file's does.
     { commit=$(git -C "$data/.." rev-parse HEAD 2>/dev/null) && echo "data $commit"
-      "$bin/dataset" "$data" "$work/wrong-$engine.tsv" --engine "$engine" --isolate on --record-seconds 10 2>&1 || true
+      "$bin/dataset" "$asked" "$work/wrong-$engine.tsv" --engine "$engine" --isolate on --record-seconds 10 2>&1 || true
     } > "$work/compliance-$engine.txt"
   else
     cp "tools/bench/compliance-$engine.txt" "$work/compliance-$engine.txt"

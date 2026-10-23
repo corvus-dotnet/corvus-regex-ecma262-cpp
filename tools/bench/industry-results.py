@@ -48,7 +48,7 @@ workloads = json.load(open(args.workloads, encoding="utf-8"))
 ids = [w["id"] for w in workloads]
 
 
-def compliance(engine, note=None):
+def compliance(engine, note=None, grammars=None, unicode=None):
     """The counts of a data-set runner's last line of counts. Every answer the engine never gave (a limit, a crash, a
     hang or a worker that gave up) is in `limited`, as the judging rule of the test data counts it: the runner's
     limit and errors."""
@@ -64,6 +64,12 @@ def compliance(engine, note=None):
     # ("data <commit>"): the page judges them against what that commit asks.
     if text and text[0].startswith("data ") and len(text[0].split()) == 2:
         out["dataCommit"] = text[0].split()[1]
+    # The grammars an engine implements, when not all three, and its version of Unicode, when not the data's (V8's):
+    # what its runner asked, and what the page judges it in.
+    if grammars:
+        out["grammars"] = grammars
+    if unicode:
+        out["unicode"] = unicode
     if note:
         out["note"] = note
     return out
@@ -72,14 +78,17 @@ def compliance(engine, note=None):
 UTF16_ONLY = ("Judged over UTF-16 only, through its exec (replace and split are the runner's), each worker in a child "
               "process, a record with no answer in 10 s counted unanswered.")
 STD_NOTE = (UTF16_ONLY + " std::regex implements the ECMAScript grammar of ECMA-262's 3rd edition (1999), as the C++ "
-            "standard modifies it: it has no u or v flag, no lookbehind and no named groups, so the data's later "
-            "features count against it.")
+            "standard modifies it: it has no u or v flag, so it is judged in the legacy grammar alone, and it has no "
+            "lookbehind and no named groups, so those count against it there.")
+SRELL_NOTE = (UTF16_ONLY + " SRELL always reads a pattern as the u flag does (and as the v flag does with unicodesets), so "
+              "it is judged in those two grammars; its Unicode tables are 18.0, so it is judged by the data's answers "
+              "for Unicode 18.0.")
 ENGINES = [
     ("corvus-utf8", "corvus-regex-ecma262 UTF-8", "C++", facts.get("corvus-regex-ecma262", ""), compliance("corvus")),
     ("corvus-utf16", "corvus-regex-ecma262 UTF-16", "C++", facts.get("corvus-regex-ecma262", ""), compliance("corvus")),
-    ("std", "std::regex", "C++", facts.get("stdlib", ""), compliance("std", STD_NOTE)),
+    ("std", "std::regex", "C++", facts.get("stdlib", ""), compliance("std", STD_NOTE, grammars=["legacy"])),
     ("boost", "Boost.Regex", "C++", facts.get("boost", ""), "not ECMA-262"),
-    ("srell", "SRELL", "C++", facts.get("srell", ""), compliance("srell", UTF16_ONLY)),
+    ("srell", "SRELL", "C++", facts.get("srell", ""), compliance("srell", SRELL_NOTE, grammars=["unicode", "unicode_sets"], unicode="18.0")),
     ("re2", "RE2", "C++", facts.get("re2", ""), "not ECMA-262"),
 ]
 results = {}
