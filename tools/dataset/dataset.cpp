@@ -285,19 +285,27 @@ struct mode {
     bool valid;
 };
 
+// The grammars the engine under test implements (all three for this library); one it does not is not asked: no
+// verdict and no answer, as the test data's judging rule says ("The grammars an engine implements").
+std::vector<std::string> asked_grammars = {"unicode", "legacy", "unicode_sets"};
+
+bool asks(std::string_view grammar) {
+    return std::find(asked_grammars.begin(), asked_grammars.end(), grammar) != asked_grammars.end();
+}
+
 std::vector<mode> modes_of(const json* r) {
     const json* valid = json_get(r, "valid");
     std::vector<mode> out;
     bool v = false;
     json_as_bool(json_get(valid, "unicode"), &v);
-    out.push_back({"u", "unicode", v});
+    if (asks("unicode")) out.push_back({"u", "unicode", v});
     v = false;
     json_as_bool(json_get(valid, "legacy"), &v);
-    out.push_back({"", "legacy", v});
+    if (asks("legacy")) out.push_back({"", "legacy", v});
     if (const json* sets = json_get(valid, "unicode_sets")) {
         v = false;
         json_as_bool(sets, &v);
-        out.push_back({"v", "unicode_sets", v});
+        if (asks("unicode_sets")) out.push_back({"v", "unicode_sets", v});
     }
     return out;
 }
@@ -407,7 +415,8 @@ template <class Range>
 bool judge_all(Range&& matches, const std::vector<exec_answer>& all, const std::vector<size_t>& map) {
     size_t n = 0;
     for (re::match m : matches) {
-        if (n >= all.size()) break;
+        // One match more than the data has: wrong, unless the data kept only the first twenty.
+        if (n >= all.size()) return all.size() == 20;
         if (!all[n].matched) return false;
         long s = all[n].spans[0], t = all[n].spans[1];
         size_t ms = map.empty() ? static_cast<size_t>(s) : map[s];
@@ -474,7 +483,10 @@ void judge_rest_corvus(judge& j, const json* a, std::u16string_view text, const 
         bool all_ok = true;
         size_t n = 0;
         for (const re::u16captures& caps : g.captures_all(text)) {
-            if (n >= all.size()) break;
+            if (n >= all.size()) {
+                all_ok = all_ok && all.size() == 20;
+                break;
+            }
             if (!same_slots(all[n], true, spans.data(), groups_of(caps, spans), none)) {
                 all_ok = false;
                 break;
@@ -752,7 +764,7 @@ void judge_captures(const json* r, std::u16string_view pattern, const options& o
         std::u16string_view text = units(text_j);
         for (int m = 0; m < 2; m++) {
             const char* mode_name = m == 0 ? "unicode" : "legacy";
-            if (!json_is_true(json_get(valid, mode_name))) continue;
+            if (!asks(mode_name) || !json_is_true(json_get(valid, mode_name))) continue;
             const json* a = json_get(test, mode_name);
             if (!a) continue;
             std::string mode_flags = flags + (m == 0 ? "u" : "");
@@ -888,7 +900,7 @@ long long answers_asked(const std::string& name, const json* r) {
             const json* text = json_string(json_get(test, "text"));
             if (!text) continue;
             for (const char* m : {"unicode", "legacy"}) {
-                if (json_is_true(json_get(valid, m)) && json_get(test, m)) n += text->len == 0 ? 6 : 7;
+                if (asks(m) && json_is_true(json_get(valid, m)) && json_get(test, m)) n += text->len == 0 ? 6 : 7;
             }
         }
         return n;
@@ -1056,6 +1068,7 @@ int main(int argc, char** argv) {
         std::unique_ptr<dataset::exec_engine> exec;
         if (std::string_view(argv[4]) != "corvus") {
             exec = dataset::make_exec_engine(argv[4]);
+            if (exec) asked_grammars = exec->grammars();
             if (!exec) return 2;
             o.exec = exec.get();
         }
@@ -1098,6 +1111,7 @@ int main(int argc, char** argv) {
     std::unique_ptr<dataset::exec_engine> exec;
     if (engine != "corvus") {
         exec = dataset::make_exec_engine(engine);
+        if (exec) asked_grammars = exec->grammars();
         if (!exec) {
             std::string names;
             for (const auto& n : dataset::exec_engine_names()) names += " " + n;

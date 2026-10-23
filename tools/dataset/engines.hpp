@@ -45,6 +45,9 @@ class exec_engine {
     virtual ~exec_engine() = default;
     virtual std::unique_ptr<exec_regex> compile(std::u16string_view pattern, std::string_view flags, refusal& why,
                                                 std::string& message) = 0;
+    // The grammars of ECMA-262 the engine implements, of "unicode" (u), "legacy" and "unicode_sets" (v): the runner
+    // asks under those alone, as the test data's judging rule says.
+    virtual std::vector<std::string> grammars() const { return {"unicode", "legacy", "unicode_sets"}; }
 };
 
 // The engines built into this runner, by the name --engine takes; nullptr for this library or an unknown name.
