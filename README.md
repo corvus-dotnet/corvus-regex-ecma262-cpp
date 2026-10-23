@@ -138,9 +138,10 @@ text must outlive the range. `native_handle()` gives the C library's handle, for
 
 ## Benchmarks
 
-The Industry workloads of dotnet/performance, this library against `std::regex` (its ECMAScript grammar),
-Boost.Regex, SRELL (an ECMAScript library), RE2 and V8, each engine with its compliance with the test data beside its
-figures, are on the central page,
+The Industry workloads of dotnet/performance, this library against `std::regex` (its ECMAScript grammar, which is
+ECMA-262's 3rd edition as the C++ standard modifies it), SRELL (an ECMAScript library), Boost.Regex and RE2 (which
+implement other dialects: Boost's ECMAScript option is its Perl syntax) and V8, each ECMA-262 engine with its
+compliance with the test data beside its figures, are on the central page,
 [corvus-oss.org/corvus-regex-ecma262-benchmarks](https://corvus-oss.org/corvus-regex-ecma262-benchmarks/), measured
 nightly on one runner with the engines of every other source.
 
@@ -154,7 +155,7 @@ nightly on one runner with the engines of every other source.
   `build/tools/dataset <ecma262-regex-test-data>/data wrong.tsv [--engine std|boost|srell --isolate on]`.
 - `tools/bench`: the benchmark harness and the script the image runs (`tools/bench/run.sh`), under the interleaved
   protocol every harness of the central benchmark page follows; `Dockerfile`: the image the central page runs.
-  std::regex, Boost.Regex and SRELL take too long to judge every night, so their compliance is worked out once
+  std::regex and SRELL take too long to judge every night, so their compliance is worked out once
   (`OTHER_ENGINES_COMPLIANCE=1`) and checked in as `tools/bench/compliance-<engine>.txt`. Each file's first line is the
   commit of the test data it was made at (`data <commit>`): the page judges the counts against what that commit asks,
   and CI fails when it is not the commit CI checks the data out at. A change to the harness alone, such as new
