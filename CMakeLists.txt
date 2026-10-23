@@ -4,13 +4,13 @@
 #
 # As a dependency of another project:
 #
-#   FetchContent_Declare(corvus_regex_ecma262_cpp GIT_REPOSITORY https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp GIT_TAG v0.2.0)
+#   FetchContent_Declare(corvus_regex_ecma262_cpp GIT_REPOSITORY https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp GIT_TAG v0.2.1)
 #   FetchContent_MakeAvailable(corvus_regex_ecma262_cpp)
 #   target_link_libraries(app PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)
 #
 # or, once installed, find_package(corvus_regex_ecma262_cpp CONFIG REQUIRED) with the same target.
 cmake_minimum_required(VERSION 3.24)
-project(corvus_regex_ecma262_cpp VERSION 0.2.0 LANGUAGES CXX)
+project(corvus_regex_ecma262_cpp VERSION 0.2.1 LANGUAGES CXX)
 
 option(CORVUS_REGEX_ECMA262_FETCH "Download the C library's release archive when find_package does not find it" ON)
 option(CORVUS_REGEX_ECMA262_CPP_TESTS "Build the tests and the examples" ${PROJECT_IS_TOP_LEVEL})
