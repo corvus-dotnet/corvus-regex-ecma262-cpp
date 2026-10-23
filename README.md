@@ -19,9 +19,9 @@ over the [corvus-regex-ecma262](https://github.com/corvus-dotnet/corvus-regex-ec
   too, so with a timeout neither a pattern nor a text from outside can make a program hang.
 
 **Compliance.** Through this header, over the [ECMA-262 test
-data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about 117,889 patterns and 5,884,566
+data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about 123,087 patterns and 6,056,699
 texts, test262's and `exec`, the global search, `replace` and `split` among them, and texts of bytes that are not UTF-8,
-which it refuses), the library gives 26,953,709 right answers and none wrong, refuses no valid pattern, accepts no
+which it refuses), the library gives 29,289,554 right answers and none wrong, refuses no valid pattern, accepts no
 invalid one and reaches no limit, over UTF-8 and UTF-16. CI runs the whole data on Linux and Windows on every change.
 
 ## Install
@@ -36,7 +36,7 @@ With FetchContent:
 include(FetchContent)
 FetchContent_Declare(corvus_regex_ecma262_cpp
   GIT_REPOSITORY https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp
-  GIT_TAG v0.2.0)
+  GIT_TAG v0.2.1)
 FetchContent_MakeAvailable(corvus_regex_ecma262_cpp)
 
 target_link_libraries(app PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)
