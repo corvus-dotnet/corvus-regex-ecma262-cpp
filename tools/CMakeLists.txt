@@ -1,6 +1,7 @@
-# The tools: the data-set runner (dataset) over this library and, with CRE_CPP_COMPETITORS, over std::regex, Boost.Regex
-# and SRELL; and, with CRE_CPP_BENCH (POSIX only, which turns CRE_CPP_COMPETITORS on and needs RE2 found by
-# pkg-config), the Industry benchmark harness (industry). Built from the top-level project with -DCRE_CPP_TOOLS=ON.
+# The tools: the data-set runner (dataset) over this library and, with CRE_CPP_OTHER_ENGINES, over std::regex,
+# Boost.Regex and SRELL; and, with CRE_CPP_BENCH (POSIX only, which turns CRE_CPP_OTHER_ENGINES on and needs RE2
+# found by pkg-config), the Industry benchmark harness (industry). Built from the top-level project with
+# -DCRE_CPP_TOOLS=ON.
 enable_language(C)
 find_package(Threads REQUIRED)
 
@@ -24,10 +25,10 @@ else()
 endif()
 
 if(CRE_CPP_BENCH)
-  set(CRE_CPP_COMPETITORS ON)
+  set(CRE_CPP_OTHER_ENGINES ON)
 endif()
 
-if(CRE_CPP_COMPETITORS)
+if(CRE_CPP_OTHER_ENGINES)
   include(FetchContent)
   # Boost.Regex, header-only in its standalone mode, and SRELL, each at a pinned release.
   set(CRE_CPP_BOOST_VERSION 1.87.0)

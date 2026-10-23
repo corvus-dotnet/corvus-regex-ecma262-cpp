@@ -9,7 +9,7 @@
 # It needs a C++20 compiler, CMake, pkg-config with RE2, Python 3 and Node 24 on PATH. ROUNDS, SECONDS_EACH, PASSES,
 # SPREAD and JOB=short are the protocol's (tools/benchmarks/protocol.sh); CORES runs the harness under taskset, SETTLE
 # waits that many seconds before it, SKIP_BUILD=1 takes the tools already built (the image's), RUN_URL names the run,
-# and KEEP copies the run's files to a directory. COMPETITOR_COMPLIANCE=1 works out the compliance of std::regex,
+# and KEEP copies the run's files to a directory. OTHER_ENGINES_COMPLIANCE=1 works out the compliance of std::regex,
 # Boost.Regex and SRELL again (an hour or more, since many records take them to their limits) rather than take
 # tools/bench/compliance-*.txt.
 set -euo pipefail
@@ -33,6 +33,15 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
   cmake -S . -B build/bench -DCMAKE_BUILD_TYPE=Release -DCRE_CPP_TOOLS=ON -DCRE_CPP_BENCH=ON -DCORVUS_REGEX_ECMA262_CPP_TESTS=OFF
   cmake --build build/bench -j 4
 fi
+# COUNT_GATE=1 (the harness-image job): every workload counted by this library's engines beside V8, one round of the
+# least timing, each count checked against V8's by count-gate.py; nothing else runs.
+if [ "${COUNT_GATE:-0}" = 1 ]; then
+  export CORVUS_REGEX_TEXTS="$texts"
+  "$bin/industry" "$workloads" --engines corvus-utf8,corvus-utf16,v8 --v8 tools/benchmarks/v8/industry.mjs --rounds 1 --seconds 0.01 \
+    --passes 1 --out "$work/counts.json" 2> "$work/counts.log" || true
+  python3 tools/bench/count-gate.py "$workloads" "$work/counts.json" corvus-utf8 corvus-utf16
+  exit $?
+fi
 "$bin/dataset" "$data" "$work/wrong-corvus.tsv" > "$work/compliance-corvus.txt" 2>&1 || true
 # V8=0 (the central run, for every image but one): no V8, whose counts the workloads carry (v8Count).
 v8=(--v8 tools/benchmarks/v8/industry.mjs)
@@ -42,7 +51,7 @@ else
   node tools/benchmarks/v8/dataset.mjs "$data" > "$work/compliance-v8.txt" 2>&1 || true
 fi
 for engine in std boost srell; do
-  if [ "${COMPETITOR_COMPLIANCE:-0}" = 1 ]; then
+  if [ "${OTHER_ENGINES_COMPLIANCE:-0}" = 1 ]; then
     "$bin/dataset" "$data" "$work/wrong-$engine.tsv" --engine "$engine" --isolate on --record-seconds 10 \
       > "$work/compliance-$engine.txt" 2>&1 || true
   else

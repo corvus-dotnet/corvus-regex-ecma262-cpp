@@ -10,7 +10,7 @@
 # at depth 1 inside the container unless its data/ directory is mounted at /data. JOB=short, SECONDS_EACH, PASSES,
 # CORES, SETTLE and RUN_URL pass through (see tools/bench/run.sh). The central benchmark site runs this image each
 # night; .github/workflows/harness-image.yml builds, smoke-runs and publishes it.
-FROM node:24.11.0-bookworm-slim AS node
+FROM node:24.22.0-bookworm-slim AS node
 
 FROM gcc:14
 RUN apt-get update && apt-get install -y --no-install-recommends cmake ninja-build pkg-config libre2-dev python3 git \

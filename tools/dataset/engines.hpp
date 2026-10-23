@@ -17,7 +17,8 @@ namespace dataset {
 inline constexpr std::size_t unset = static_cast<std::size_t>(-1);
 
 // What a test answers: yes or no, or no answer (a limit reached, or an error).
-enum class result { no = 0, yes = 1, limit = -1, error = -2 };
+// refused: the text is not UTF-8, and the engine said so (the right answer in ill-formed-utf8.jsonl).
+enum class result { no = 0, yes = 1, limit = -1, error = -2, refused = -3 };
 
 // Why a pattern was not compiled: not valid (PARSE), over a limit of size (TOO-LARGE), or anything else (ERROR), which
 // is counted as an error too.

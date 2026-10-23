@@ -11,9 +11,10 @@
  * own (`industry --one`, or `node industry.mjs --one` for V8), which warms for two fifths of its seconds, then times
  * `passes` passes of as many counts as fit the rest and reports their median. A workload's figure for an engine is the
  * median of its rounds, with the fastest and the slowest round as its spread; a figure whose spread, (slowest -
- * fastest) / median, is over --spread is listed in the run's facts (spread_over) and on stderr. A child that does not
- * finish in two minutes is stopped and recorded as such. A count is the global search of ECMA-262: after an empty
- * match the search goes on one code point later (one code unit without u).
+ * fastest) / median, is over --spread is listed in the run's facts (spread_over) and on stderr. A figure that does not
+ * finish in 30 s is stopped and recorded as giving no result within 30 s, and is not run in the workload's later
+ * rounds. A count is the global search of ECMA-262: after an empty match the search goes on one code point later (one
+ * code unit without u).
  *
  * The engines are listed in engines.cpp. An engine written `name@path` is run by the harness binary at `path` (this
  * one, or the Rust or C harness, whose child protocol is the same), so that two builds can be timed side by side in
@@ -325,6 +326,9 @@ typedef struct {
 } figures;
 
 /* One figure: engine over workload index in a child process: the child's line of JSON, or one with the error. */
+/* The line of a figure stopped at the limit, which the page shows as giving no result within 30 s. */
+static const char STOPPED[] = "{\"error\":\"did not produce a result within 30 s\",\"limit\":30}";
+
 static char *figure(const char *exe, const char *v8, const char *path, size_t index, const char *engine_spec,
                     const char *seconds, const char *passes) {
     char *spec = strdup(engine_spec);
@@ -353,7 +357,7 @@ static char *figure(const char *exe, const char *v8, const char *path, size_t in
     close(fds[1]);
     char buf[65536];
     size_t n = 0;
-    double deadline = now() + 120;
+    double deadline = now() + 30;
     bool done = false;
     while (!done && n < sizeof buf - 1) {
         int left = (int)((deadline - now()) * 1000);
@@ -379,7 +383,7 @@ static char *figure(const char *exe, const char *v8, const char *path, size_t in
         *nl = 0;
         return strdup(buf);
     }
-    if (timed_out) return strdup("{\"error\":\"did not finish in two minutes\"}");
+    if (timed_out) return strdup(STOPPED);
     return strdup("{\"error\":\"the process ended without figures\"}");
 }
 
@@ -513,8 +517,10 @@ int main(int argc, char **argv) {
         for (int round = 0; round < rounds; round++) {
             for (size_t turn = 0; turn < engine_count; turn++) {
                 size_t e = (turn + (size_t)round) % engine_count;
-                char *line = figure(exe, v8, path, k, engines[e], seconds, passes);
                 figures *fig = &f[e * count + k];
+                /* A figure stopped at the limit in an earlier round is not run again. */
+                if (fig->line && strcmp(fig->line, STOPPED) == 0) continue;
+                char *line = figure(exe, v8, path, k, engines[e], seconds, passes);
                 bool ok;
                 double m = number_of(line, "median", &ok);
                 if (ok) {
