@@ -3,7 +3,7 @@
 // (tools/c/dataset.c in corvus-regex-ecma262-rs) judges it, of which this is a port:
 //
 //   dataset <data directory> <wrong-cases output file> [--engine corvus|std|boost|srell] [--files <filter>]
-//           [--encodings utf16|utf8|both]
+//           [--encodings utf16|utf8|both] [--isolate on [--record-seconds 30]] [--compliance <file>]
 //
 // With --engine corvus (the default) it judges this library, through corvus/regex_ecma262.hpp alone: is_match, find,
 // captures, captures_all, find_all, replace, replace_all and split, over UTF-16 and UTF-8. The other engines, which a
@@ -16,6 +16,18 @@
 // refusal of a valid pattern, an acceptance of an invalid one, and a match that reaches its limit are counted apart and
 // listed too. ill-formed-utf8.jsonl holds bytes that are not UTF-8, which the binding must refuse (errc::invalid_utf8).
 // captures.jsonl is judged on exec, the global search, the sticky flag, replace and split. A match is given 2 seconds.
+//
+// exec/test262.jsonl, the exec calls of test262 (in a directory of its own), is judged last: each call one exec with the
+// record's flags from its lastIndex, right when the positions of the match and of every group, the named groups and,
+// with g or y, the lastIndex after are V8's; one answer over UTF-16 and, when the text holds no lone surrogate and
+// lastIndex is not between the halves of a pair, one over UTF-8 with positions in bytes. A record is asked in the one
+// grammar its flags give (v, u, or neither), and only where the engine implements it. The other engines are given the
+// flags without g and d (the runner reads lastIndex, and exec gives the indices) and keep y, which each honours.
+//
+// With --compliance <file>, the engine's compliance object is written to the file, as the benchmark page reads it
+// (docs/implementing-a-source.md in corvus-regex-ecma262-benchmarks): the counts, this runner and the calls it makes in
+// each encoding, and what it leaves out (nothing for this library; for the other engines, UTF-8, the grammars they do
+// not implement, their version of Unicode, the operations written over their exec and, isolated, the record limit).
 #include <corvus/regex_ecma262.hpp>
 
 #include <algorithm>
@@ -845,9 +857,204 @@ void judge_ill_formed(const json* r, std::u16string_view pattern, const options&
     }
 }
 
+// ------------------------------------------------------------------------------------------------------------------
+// exec/test262.jsonl
+
+const std::string exec_file = "exec/test262.jsonl";
+
+// A call's lastIndex. Past the end of the text exec gives null; test262 sets it as far as 2^53 - 1 and
+// Number.MAX_VALUE, so anything past the end reads as the text's length plus one.
+size_t last_index_of(const json* t, size_t len) {
+    const json* v = json_get(t, "lastIndex");
+    double d = v && v->kind == JSON_NUMBER ? v->number : 0;
+    return d > static_cast<double>(len) ? len + 1 : static_cast<size_t>(d);
+}
+
+// Whether a position is between the halves of a surrogate pair, where UTF-8 has no position.
+bool inside_pair(std::u16string_view s, size_t at) {
+    return at > 0 && at < s.size() && s[at] >= 0xDC00 && s[at] <= 0xDFFF && s[at - 1] >= 0xD800 && s[at - 1] <= 0xDBFF;
+}
+
+// The grammar of a record of exec/test262.jsonl: that of its flags.
+const char* grammar_of(std::string_view flags) {
+    return flags.find('v') != std::string_view::npos   ? "unicode_sets"
+           : flags.find('u') != std::string_view::npos ? "unicode"
+                                                       : "legacy";
+}
+
+// An engine's match for a call: the bounds of the match and of each group (unset for a group that did not take part),
+// and each name with the bounds of its group (the one of that name that took part).
+struct exec_got {
+    std::vector<size_t> groups;
+    std::vector<std::pair<std::u16string, std::pair<size_t, size_t>>> names;
+};
+
+// A bound of the answer (a UTF-16 position) through map (empty for none).
+size_t mapped(const json* b, const std::vector<size_t>& map) {
+    size_t k = static_cast<size_t>(b->number);
+    return map.empty() ? k : map[k];
+}
+
+bool same_span(const json* e, size_t s, size_t t, const std::vector<size_t>& map) {
+    if (e->kind == JSON_NULL) return s == unset;
+    if (e->kind != JSON_ARRAY || e->len != 2 || s == unset) return false;
+    return mapped(&e->items[0], map) == s && mapped(&e->items[1], map) == t;
+}
+
+// Whether an engine's match (nothing for none) is the call's answer: both null, or the same groups, the same named
+// groups (present exactly when the pattern has names) and, with g or y, a lastIndex after at the match's end.
+bool same_exec_answer(const json* answer, const std::optional<exec_got>& g, bool carries, const std::vector<size_t>& map) {
+    if (!g || answer->kind == JSON_NULL) return !g && answer->kind == JSON_NULL;
+    const json* captures = json_get(answer, "captures");
+    if (!captures || captures->kind != JSON_ARRAY || 2 * captures->len != g->groups.size()) return false;
+    for (size_t k = 0; k < captures->len; k++) {
+        if (!same_span(&captures->items[k], g->groups[2 * k], g->groups[2 * k + 1], map)) return false;
+    }
+    const json* groups = json_get(answer, "groups");
+    if (!groups) {
+        if (!g->names.empty()) return false;
+    } else {
+        if (groups->kind != JSON_OBJECT || groups->len != g->names.size()) return false;
+        for (size_t k = 0; k < groups->len; k++) {
+            const json_member& m = groups->members[k];
+            std::u16string name = utf16_of(m.name);
+            auto at = std::find_if(g->names.begin(), g->names.end(), [&](const auto& n) { return n.first == name; });
+            if (at == g->names.end() || !same_span(&m.value, at->second.first, at->second.second, map)) return false;
+        }
+    }
+    if (!carries) return true;
+    const json* last = json_get(answer, "lastIndex");
+    return last && last->kind == JSON_NUMBER && mapped(last, map) == g->groups[1];
+}
+
+// This library's exec at start over a text of either encoding: a y flag makes it sticky, as its own captures are.
+template <class T>
+std::optional<exec_got> exec_corvus(const re::regex& re, const T& text, size_t start) {
+    auto caps = re.captures(text, start, limit);
+    if (!caps) return std::nullopt;
+    exec_got g;
+    groups_of(*caps, g.groups);
+    g.groups.resize(2 * caps->size());
+    for (std::string_view name : re.group_names()) {
+        re::match m = (*caps)[name];
+        g.names.emplace_back(utf16_of(name), std::make_pair(m.start, m.end));
+    }
+    return g;
+}
+
+// An exec engine's exec at start over UTF-16: with y it must match there.
+std::optional<exec_got> exec_other(dataset::exec_regex& re, std::u16string_view text, size_t start, result& failure,
+                                   const char** why) {
+    exec_got g;
+    g.groups.resize(2 * re.groups());
+    result got = re.exec(text, start, g.groups.data(), why);
+    if (got == result::limit || got == result::error) {
+        failure = got;
+        return std::nullopt;
+    }
+    if (got != result::yes) return std::nullopt;
+    for (size_t k = 1; k < re.groups(); k++) {
+        std::u16string_view name = re.name(k);
+        if (name.empty()) continue;
+        auto at = std::find_if(g.names.begin(), g.names.end(), [&](const auto& n) { return n.first == name; });
+        if (at == g.names.end()) {
+            g.names.emplace_back(std::u16string(name), std::make_pair(unset, unset));
+            at = g.names.end() - 1;
+        }
+        if (at->second.first == unset && g.groups[2 * k] != unset) at->second = {g.groups[2 * k], g.groups[2 * k + 1]};
+    }
+    return g;
+}
+
+// Counts one answer of a call.
+void count_exec(counts& c, std::vector<std::string>& w, const std::string& where, const char* encoding, result outcome,
+                const char* why) {
+    switch (outcome) {
+    case result::yes: c.right++; return;
+    case result::no:
+        c.wrong++;
+        w.push_back("WRONG\t" + exec_file + "\t" + where + "\t" + encoding);
+        return;
+    case result::limit:
+        c.limited++;
+        w.push_back("LIMIT\t" + exec_file + "\t" + where + "\t" + encoding + "\t" + (why ? why : "limit"));
+        return;
+    default:
+        c.errors++;
+        w.push_back("ERROR\t" + exec_file + "\t" + where + "\t" + encoding + "\t" + (why ? why : "error"));
+        return;
+    }
+}
+
+// Judges a record of exec/test262.jsonl: the pattern with its own flags, from each call's lastIndex.
+void judge_exec(const json* r, std::u16string_view pattern, const options& o, counts& c, std::vector<std::string>& w) {
+    std::string flags = utf8_lossy(units(json_string(json_get(r, "flags"))));
+    if (!asks(grammar_of(flags))) return;
+    bool carries = flags.find_first_of("gy") != std::string::npos;
+    std::string given = flags;
+    if (o.exec) std::erase_if(given, [](char f) { return f == 'g' || f == 'd'; });
+    std::string pattern_shown = shown(pattern);
+    bool is_error;
+    std::string message;
+    compiled re = compile(o, pattern, given, is_error, message);
+    if (!re) {
+        c.refused++;
+        w.push_back("REFUSED\t" + exec_file + "\t/" + pattern_shown + "/" + flags + "\t" + first_line(message));
+        return;
+    }
+    const json* tests = json_get(r, "tests");
+    for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
+        const json* test = &tests->items[t];
+        if (json_is_true(json_get(test, "v8_deviation"))) continue;
+        const json* text_j = json_string(json_get(test, "text"));
+        const json* answer = json_get(test, "answer");
+        if (!text_j || !answer) continue;
+        std::u16string_view text = units(text_j);
+        size_t start = carries ? last_index_of(test, text.size()) : 0;
+        char raw[32];
+        std::snprintf(raw, sizeof raw, "%.17g", json_get(test, "lastIndex")->number);
+        std::string where = "/" + pattern_shown + "/" + flags + "\t";
+        escape(where, text);
+        where += std::string("\t") + raw;
+        const char* why = nullptr;
+        // One answer: exec from start (null past the end of the text) against the answer.
+        auto answer_of = [&](auto&& run, const std::vector<size_t>& map) -> result {
+            if (start > text.size()) return answer->kind == JSON_NULL ? result::yes : result::no;
+            result failure = result::no;
+            std::optional<exec_got> got;
+            try {
+                got = run(failure);
+            } catch (const re::regex_error& e) {
+                return failed(e, &why);
+            }
+            if (failure == result::limit || failure == result::error) return failure;
+            return same_exec_answer(answer, got, carries, map) ? result::yes : result::no;
+        };
+        if (o.utf16) {
+            result outcome = answer_of(
+                [&](result& failure) {
+                    return o.exec ? exec_other(*re.exec, text, start, failure, &why) : exec_corvus(*re.corvus, text, start);
+                },
+                {});
+            count_exec(c, w, where, "utf16", outcome, why);
+        }
+        if (o.utf8 && !o.exec && !lone_surrogate(text) && !inside_pair(text, start)) {
+            std::string utf8 = utf8_lossy(text);
+            std::vector<size_t> byte_at = byte_offsets(text);
+            result outcome = answer_of(
+                [&](result&) { return exec_corvus(*re.corvus, std::string_view(utf8), byte_at[start]); }, byte_at);
+            count_exec(c, w, where, "utf8", outcome, why);
+        }
+    }
+}
+
 void judge_record(const std::string& name, const json* r, const options& o, counts& c, std::vector<std::string>& w) {
     const json* pattern = json_string(json_get(r, "pattern"));
     if (!pattern) return;
+    if (name == exec_file) {
+        judge_exec(r, units(pattern), o, c, w);
+        return;
+    }
     if (name == "captures.jsonl") {
         if (o.utf16) judge_captures(r, units(pattern), o, c, w);
         return;
@@ -892,6 +1099,13 @@ bool glob(std::string_view pattern, std::string_view name) {
 long long answers_asked(const std::string& name, const json* r) {
     long long n = 0;
     const json* tests = json_get(r, "tests");
+    if (name == exec_file) {
+        if (!asks(grammar_of(utf8_lossy(units(json_string(json_get(r, "flags"))))))) return 0;
+        for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
+            if (!json_is_true(json_get(&tests->items[t], "v8_deviation"))) n++;
+        }
+        return n;
+    }
     if (name == "captures.jsonl") {
         const json* valid = json_get(r, "valid");
         for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
@@ -1056,6 +1270,54 @@ void supervise(const std::vector<std::string>& child_args, const std::string& na
 }
 #endif
 
+// Writes the engine's compliance as the benchmark page reads it: the counts, this runner and the calls it makes in each
+// encoding it asked in, and what it leaves out.
+void write_compliance(const std::string& path, const options& o, bool isolate, double record_seconds, const counts& t) {
+    auto list = [](const std::vector<std::string>& calls) {
+        std::string out;
+        for (const auto& call : calls) out += (out.empty() ? "\"" : ",\"") + call + "\"";
+        return out;
+    };
+    std::string calls, excludes;
+    if (o.exec) {
+        calls = "\"utf16\":[" + list(o.exec->calls()) + "]";
+        excludes = R"({"class":"encoding","leaves":"utf8"})";
+        std::vector<std::string> left;
+        for (const char* g : {"legacy", "unicode", "unicode_sets"}) {
+            if (!asks(g)) left.push_back(g);
+        }
+        if (!left.empty()) excludes += R"(,{"class":"grammar","leaves":[)" + list(left) + "]}";
+        if (!o.exec->unicode().empty()) excludes += R"(,{"class":"unicode","version":")" + o.exec->unicode() + "\"}";
+        excludes += R"(,{"class":"operations","leaves":["global","replace","split"]})";
+        if (isolate) {
+            char limit_text[64];
+            std::snprintf(limit_text, sizeof limit_text, R"(,{"class":"record-limit","seconds":%.0f})", record_seconds);
+            excludes += limit_text;
+        }
+    } else {
+        // Each member over a std::u16string_view (UTF-16) or a std::string_view (UTF-8).
+        auto over = [](const char* text, bool split) {
+            std::vector<std::string> members{"is_match", "captures", "captures_all", "find_all", "replace", "replace_all"};
+            if (split) members.push_back("split");
+            for (auto& m : members) m = "regex::" + m + "(" + text + ")";
+            return members;
+        };
+        if (o.utf16) calls = "\"utf16\":[" + list(over("std::u16string_view", true)) + "]";
+        if (o.utf8) calls += std::string(calls.empty() ? "" : ",") + "\"utf8\":[" + list(over("std::string_view", false)) + "]";
+    }
+    FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) {
+        std::fprintf(stderr, "cannot write %s\n", path.c_str());
+        std::exit(2);
+    }
+    std::fprintf(f,
+                 "{\"right\":%lld,\"wrong\":%lld,\"refused\":%lld,\"acceptedInvalid\":%lld,\"limited\":%lld,"
+                 "\"judge\":{\"runner\":\"https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp/blob/main/tools/dataset/"
+                 "dataset.cpp\",\"calls\":{%s}},\"excludes\":[%s]}\n",
+                 t.right, t.wrong, t.refused, t.accepted, t.limited + t.errors, calls.c_str(), excludes.c_str());
+    std::fclose(f);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1081,13 +1343,16 @@ int main(int argc, char** argv) {
     if (argc < 3) {
         std::fprintf(stderr,
                      "usage: %s <data directory> <wrong-cases file> [--engine corvus|...] [--files <filter>] "
-                     "[--encodings utf16|utf8|both] [--isolate on [--record-seconds 10]]\n",
+                     "[--encodings utf16|utf8|both] [--isolate on [--record-seconds 30]] [--compliance <file>]\n",
                      argv[0]);
         return 2;
     }
     std::string directory = argv[1], wrong_path = argv[2], filter = "*.jsonl", encodings = "both", engine = "corvus";
     bool isolate = false;
-    double record_seconds = 10;
+    // The one limit on a record of an engine that cannot be stopped in a match (docs/implementing-a-source.md in
+    // corvus-regex-ecma262-benchmarks).
+    double record_seconds = 30;
+    std::string compliance;
     for (int k = 3; k + 1 < argc; k += 2) {
         std::string_view flag = argv[k];
         if (flag == "--isolate") {
@@ -1100,6 +1365,8 @@ int main(int argc, char** argv) {
             filter = argv[k + 1];
         } else if (flag == "--encodings") {
             encodings = argv[k + 1];
+        } else if (flag == "--compliance") {
+            compliance = argv[k + 1];
         } else {
             std::fprintf(stderr, "unknown option %s\n", argv[k]);
             return 2;
@@ -1131,6 +1398,11 @@ int main(int argc, char** argv) {
         if (name.size() > 6 && name.ends_with(".jsonl") && glob(filter, name)) files.push_back(name);
     }
     std::sort(files.begin(), files.end());
+    // The exec calls of test262, in a directory of their own: with the default filter, or one that names them.
+    if ((filter == "*.jsonl" || filter.starts_with("exec")) &&
+        std::filesystem::is_regular_file(std::filesystem::path(directory) / exec_file)) {
+        files.push_back(exec_file);
+    }
 
     counts total;
     std::vector<std::string> wrong;
@@ -1228,6 +1500,7 @@ int main(int argc, char** argv) {
         for (const auto& line : wrong) std::fprintf(out, "%s\n", line.c_str());
         std::fclose(out);
     }
+    if (!compliance.empty()) write_compliance(compliance, o, isolate, record_seconds, total);
     std::printf(
         "\nrecords %lld (skipped %lld deviations)  right %lld  wrong %lld  refused-valid %lld  accepted-invalid %lld  "
         "limit %lld  errors %lld  in %.1fs\n",
