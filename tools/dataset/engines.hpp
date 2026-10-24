@@ -48,6 +48,11 @@ class exec_engine {
     // The grammars of ECMA-262 the engine implements, of "unicode" (u), "legacy" and "unicode_sets" (v): the runner
     // asks under those alone, as the test data's judging rule says.
     virtual std::vector<std::string> grammars() const { return {"unicode", "legacy", "unicode_sets"}; }
+    // The engine's calls the runner makes, by their names in its own API, for the compliance file's judge.
+    virtual std::vector<std::string> calls() const = 0;
+    // The version of the engine's Unicode tables when it is not the data's ("18.0"), or empty: its runner reads the data
+    // with that version's overlay applied, and the compliance file says so.
+    virtual std::string unicode() const { return {}; }
 };
 
 // The engines built into this runner, by the name --engine takes; nullptr for this library or an unknown name.

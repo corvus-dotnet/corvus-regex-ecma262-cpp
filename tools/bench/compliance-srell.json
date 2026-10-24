@@ -1,0 +1,41 @@
+{
+ "right": 7700658,
+ "wrong": 5747,
+ "refused": 2428,
+ "acceptedInvalid": 77,
+ "limited": 5132,
+ "judge": {
+  "runner": "https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp/blob/main/tools/dataset/dataset.cpp",
+  "calls": {
+   "utf16": [
+    "srell::basic_regex",
+    "srell::regex_search"
+   ]
+  }
+ },
+ "excludes": [
+  {
+   "class": "encoding",
+   "leaves": "utf8"
+  },
+  {
+   "class": "grammar",
+   "leaves": [
+    "legacy"
+   ]
+  },
+  {
+   "class": "unicode",
+   "version": "18.0"
+  },
+  {
+   "class": "operations",
+   "leaves": [
+    "global",
+    "replace",
+    "split"
+   ]
+  }
+ ],
+ "dataCommit": "cff0860b7ebc5eb9c801eb9f8cec9d5398688ff2"
+}

@@ -5,7 +5,7 @@ measures, impls, schemas, results), as the C and Rust harnesses write theirs. Th
 page of figures from its data file; this repository publishes no results of its own.
 
 Usage: industry-results.py --workloads <workloads.json> --run <harness results json> --out <data file>
-                           --compliance-dir <directory of compliance-<engine>.txt> [--run-url <url>]
+                           --compliance-dir <directory of compliance-<engine>.json> [--run-url <url>]
 
 The run is the output of the harness (tools/bench/industry.c and engines.cpp), whose facts are the run's own record
 of itself: the processor, the cores it was given, the system, the load when it started, the runner when it is a
@@ -13,9 +13,10 @@ GitHub-hosted one, the compiler, the engines' versions, the commit, the seconds 
 time it ended. V8 runs inside the interleaved run and names its engine. Nothing is typed in: what is not in a record
 is not said.
 
-Each engine that claims ECMA-262 carries its compliance over the ECMA-262 test data, from the last line of its
-data-set runner: this library's and std::regex's and SRELL's by tools/dataset (the last two over UTF-16 through their
-exec, in child processes, a record with no answer in 10 s counted unanswered), V8's by tools/benchmarks/v8/dataset.mjs.
+Each engine that claims ECMA-262 carries its compliance over the ECMA-262 test data, the compliance file its data-set
+runner writes (--compliance: the counts, the runner and the calls it makes, and what it leaves out): this library's
+and std::regex's and SRELL's by tools/dataset (the last two over UTF-16 through their exec, in child processes, an
+answer that passes 2 s unanswered), V8's by tools/benchmarks/v8/dataset.mjs.
 Boost.Regex (whose ECMAScript option is its Perl syntax) and RE2 implement other dialects, and carry "not ECMA-262".
 """
 import argparse, json, os, re, sys
@@ -48,68 +49,36 @@ workloads = json.load(open(args.workloads, encoding="utf-8"))
 ids = [w["id"] for w in workloads]
 
 
-def read_counts(path):
-    """The lines of a data-set runner's output and the counts of its last line of counts, or None, with a warning on
-    stderr, when the output cannot be read or that line is missing or lacks a count. That happens when the runner
-    failed, or when a checked-in file is missing or malformed. The engine is then written without a compliance, so a
-    fault in the compliance step costs that engine its compliance and never costs the run its figures, which have all
-    been timed by the time this runs."""
+def compliance(engine):
+    """The compliance object a data-set runner wrote (its --compliance file, compliance-<engine>.json), which the page
+    reads as it is: the counts (every answer the engine never gave, a limit, a crash, a hang or a worker that gave up,
+    in `limited`, as the judging rule of the test data counts it), `judge` and `excludes`, and for counts checked in
+    beside the harness the commit of the test data they were made at (`dataCommit`), which the page judges them
+    against. None, with a warning on stderr, when the file cannot be read or lacks one of them. That happens when the
+    runner failed, or when a checked-in file is missing or malformed. The engine is then written without a compliance,
+    so a fault in the compliance step costs that engine its compliance and never costs the run its figures, which have
+    all been timed by the time this runs."""
+    path = os.path.join(args.compliance_dir, f"compliance-{engine}.json")
     try:
-        text = open(path, encoding="utf-8").read().splitlines()
-    except (OSError, UnicodeDecodeError) as e:
+        with open(path, encoding="utf-8") as f:
+            c = json.load(f)
+    except (OSError, ValueError) as e:
         print(f"warning: {path} could not be read ({e}), so its engine is written without a compliance", file=sys.stderr)
         return None
-    lines = [l for l in text if l.startswith("records ")]
-    c = {k: int(v) for k, v in re.findall(r"(right|wrong|refused-valid|accepted-invalid|limit|errors) (\d+)", lines[-1])} \
-        if lines else {}
-    missing = [k for k in ("right", "wrong", "refused-valid", "accepted-invalid") if k not in c]
+    missing = [k for k in ("right", "wrong", "refused", "acceptedInvalid", "limited", "judge", "excludes")
+               if not isinstance(c, dict) or k not in c]
     if missing:
-        what = "has no line of counts" if not lines else f"has no {', '.join(missing)} in its line of counts"
-        print(f"warning: {path} {what}, so its engine is written without a compliance", file=sys.stderr)
+        print(f"warning: {path} has no {', '.join(missing)}, so its engine is written without a compliance", file=sys.stderr)
         return None
-    return text, c
+    return c
 
 
-def compliance(engine, note=None, grammars=None, unicode=None):
-    """The counts of a data-set runner's last line of counts. Every answer the engine never gave (a limit, a crash, a
-    hang or a worker that gave up) is in `limited`, as the judging rule of the test data counts it: the runner's
-    limit and errors. None when the counts cannot be read (read_counts)."""
-    path = os.path.join(args.compliance_dir, f"compliance-{engine}.txt")
-    read = read_counts(path)
-    if read is None:
-        return None
-    text, c = read
-    out = {"right": c["right"], "wrong": c["wrong"], "refused": c["refused-valid"], "acceptedInvalid": c["accepted-invalid"],
-           "limited": c.get("limit", 0) + c.get("errors", 0)}
-    # Counts checked in beside the harness name the commit of the test data they were made at on their first line
-    # ("data <commit>"): the page judges them against what that commit asks.
-    if text and text[0].startswith("data ") and len(text[0].split()) == 2:
-        out["dataCommit"] = text[0].split()[1]
-    # The grammars an engine implements, when not all three, and its version of Unicode, when not the data's (V8's):
-    # what its runner asked, and what the page judges it in.
-    if grammars:
-        out["grammars"] = grammars
-    if unicode:
-        out["unicode"] = unicode
-    if note:
-        out["note"] = note
-    return out
-
-
-UTF16_ONLY = ("Judged over UTF-16 only, through its exec (replace and split are the runner's), each worker in a child "
-              "process, a record with no answer in 10 s counted unanswered.")
-STD_NOTE = (UTF16_ONLY + " std::regex implements the ECMAScript grammar of ECMA-262's 3rd edition (1999), as the C++ "
-            "standard modifies it: it has no u or v flag, so it is judged in the legacy grammar alone, and it has no "
-            "lookbehind and no named groups, so those count against it there.")
-SRELL_NOTE = (UTF16_ONLY + " SRELL always reads a pattern as the u flag does (and as the v flag does with unicodesets), so "
-              "it is judged in those two grammars; its Unicode tables are 18.0, so it is judged by the data's answers "
-              "for Unicode 18.0.")
 ENGINES = [
     ("corvus-utf8", "corvus-regex-ecma262 UTF-8", "C++", facts.get("corvus-regex-ecma262", ""), compliance("corvus")),
     ("corvus-utf16", "corvus-regex-ecma262 UTF-16", "C++", facts.get("corvus-regex-ecma262", ""), compliance("corvus")),
-    ("std", "std::regex", "C++", facts.get("stdlib", ""), compliance("std", STD_NOTE, grammars=["legacy"])),
+    ("std", "std::regex", "C++", facts.get("stdlib", ""), compliance("std")),
     ("boost", "Boost.Regex", "C++", facts.get("boost", ""), "not ECMA-262"),
-    ("srell", "SRELL", "C++", facts.get("srell", ""), compliance("srell", SRELL_NOTE, grammars=["unicode", "unicode_sets"], unicode="18.0")),
+    ("srell", "SRELL", "C++", facts.get("srell", ""), compliance("srell")),
     ("re2", "RE2", "C++", facts.get("re2", ""), "not ECMA-262"),
 ]
 results = {}
@@ -149,13 +118,6 @@ over = facts.get("spread_over", "")
 spread = (f"over {float(facts.get('spread_limit', 0)) * 100:.0f}% (slowest - fastest) / median: {over}" if over
           else f"every figure within {float(facts.get('spread_limit', 0)) * 100:.0f}% (slowest - fastest) / median")
 runtime = "; ".join(x for x in (facts.get("cxx", ""), facts.get("stdlib", ""), v8["engine"] if v8 else "") if x)
-
-# The encodings each engine's runner answers in, which the central benchmark page's compliance figure is a share of:
-# every answer the test data asks in those encodings, so an answer the runner did not ask counts against the engine.
-ENCODINGS = {"std": ["utf16"], "srell": ["utf16"], "v8": ["utf16"]}
-for key, _, _, _, counts in ENGINES:
-    if isinstance(counts, dict):
-        counts["encodings"] = ENCODINGS.get(key, ["utf16", "utf8"])
 
 data = {
     "meta": {

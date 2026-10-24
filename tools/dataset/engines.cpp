@@ -177,6 +177,7 @@ class std_engine final : public exec_engine {
   public:
     // ECMA-262's 3rd edition as the C++ standard modifies it: no u or v flag.
     std::vector<std::string> grammars() const override { return {"legacy"}; }
+    std::vector<std::string> calls() const override { return {"std::wregex", "std::regex_search"}; }
     std::unique_ptr<exec_regex> compile(std::u16string_view pattern, std::string_view flags, refusal& why,
                                         std::string& message) override {
         if (has(flags, 's') || has(flags, 'v')) {
@@ -254,6 +255,7 @@ class boost_regex final : public exec_regex {
 
 class boost_engine final : public exec_engine {
   public:
+    std::vector<std::string> calls() const override { return {"boost::wregex", "boost::regex_search"}; }
     std::unique_ptr<exec_regex> compile(std::u16string_view pattern, std::string_view flags, refusal& why,
                                         std::string& message) override {
         if (has(flags, 'v')) {
@@ -353,6 +355,9 @@ class srell_engine final : public exec_engine {
     // SRELL always reads a pattern as the u flag does (and as the v flag does with unicodesets): it has no legacy
     // grammar.
     std::vector<std::string> grammars() const override { return {"unicode", "unicode_sets"}; }
+    std::vector<std::string> calls() const override { return {"srell::basic_regex", "srell::regex_search"}; }
+    // SRELL's tables are of Unicode 18.0, which the data's overlay for that version answers.
+    std::string unicode() const override { return "18.0"; }
     std::unique_ptr<exec_regex> compile(std::u16string_view pattern, std::string_view flags, refusal& why,
                                         std::string& message) override {
         bool unicode = has(flags, 'u') || has(flags, 'v');

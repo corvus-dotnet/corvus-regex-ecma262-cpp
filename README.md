@@ -19,10 +19,10 @@ over the [corvus-regex-ecma262](https://github.com/corvus-dotnet/corvus-regex-ec
   too, so with a timeout neither a pattern nor a text from outside can make a program hang.
 
 **Compliance.** Through this header, over the [ECMA-262 test
-data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about 123,833 patterns and 6,124,271
-texts, test262's and `exec`, the global search, `replace` and `split` among them, and texts of bytes that are not UTF-8,
-which it refuses), the library gives 29,689,063 right answers and none wrong, refuses no valid pattern, accepts no
-invalid one and reaches no limit, over UTF-8 and UTF-16. CI runs the whole data on Linux and Windows on every change.
+data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about its patterns and texts, test262's
+patterns and `exec` calls, the global search, `replace` and `split` among them, and texts of bytes that are not UTF-8,
+which it refuses), the library gives every answer right and none wrong, refuses no valid pattern, accepts no invalid
+one and reaches no limit, over UTF-8 and UTF-16. CI runs the whole data on Linux and Windows on every change.
 
 ## Install
 
@@ -156,12 +156,17 @@ nightly on one runner with the engines of every other source.
 - `tools/bench`: the benchmark harness and the script the image runs (`tools/bench/run.sh`), under the interleaved
   protocol every harness of the central benchmark page follows; `Dockerfile`: the image the central page runs.
   std::regex and SRELL take too long to judge every night, so their compliance is worked out once
-  (`OTHER_ENGINES_COMPLIANCE=1`) and checked in as `tools/bench/compliance-<engine>.txt`. Each file's first line is the
-  commit of the test data it was made at (`data <commit>`): the page judges the counts against what that commit asks,
-  and CI fails when it is not the commit CI checks the data out at. Each engine is asked under the grammars it
-  implements alone (`grammars()` in `tools/dataset/engines.hpp`): std::regex has no u or v flag, so it is judged in
-  the legacy grammar; SRELL has only the u and v grammars, and its Unicode tables are 18.0, so it is judged in those
-  and by the data's answers for Unicode 18.0 (the test data's overlay). A change to the harness alone, such as new
+  (`OTHER_ENGINES_COMPLIANCE=1`) and checked in as `tools/bench/compliance-<engine>.json`, the compliance file the
+  runner writes (`--compliance`): the counts, the runner and the calls it makes, and what it leaves out, of the kinds
+  the central page allows. Each file gives the commit of the test data it was made at (`dataCommit`): the page judges
+  the counts against what that commit asks, and CI fails when it is not the commit CI checks the data out at. Each
+  engine is asked under the grammars it implements alone (`grammars()` in `tools/dataset/engines.hpp`): std::regex has
+  no u or v flag, so it is judged in the legacy grammar; SRELL has only the u and v grammars, and its Unicode tables are
+  18.0 (`unicode()`), so it is judged in those and by the data's answers for Unicode 18.0 (the test data's overlay).
+  Both run in child processes, whose watchdog thread ends one at an answer that passes 2 seconds of the CPU time of
+  the thread that runs the engine (that answer unanswered, and a new child going on from the next; once three answers
+  of a record have reached the limit, its other answers are unanswered without being asked), and are judged over
+  UTF-16 alone with the global search, replace and split written over their exec. A change to the harness alone, such as new
   counts, is released as a harness release (`gh release create harness-<version>.<n> --latest=false`).
 
 ## Licence
