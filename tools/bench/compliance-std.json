@@ -1,9 +1,9 @@
 {
- "right": 4412055,
- "wrong": 71157,
+ "right": 4415964,
+ "wrong": 71330,
  "refused": 146881,
  "acceptedInvalid": 458,
- "limited": 9770,
+ "limited": 5688,
  "judge": {
   "runner": "https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp/blob/main/tools/dataset/dataset.cpp",
   "calls": {
@@ -32,10 +32,6 @@
     "replace",
     "split"
    ]
-  },
-  {
-   "class": "record-limit",
-   "seconds": 30
   }
  ],
  "dataCommit": "cff0860b7ebc5eb9c801eb9f8cec9d5398688ff2"

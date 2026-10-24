@@ -163,8 +163,10 @@ nightly on one runner with the engines of every other source.
   engine is asked under the grammars it implements alone (`grammars()` in `tools/dataset/engines.hpp`): std::regex has
   no u or v flag, so it is judged in the legacy grammar; SRELL has only the u and v grammars, and its Unicode tables are
   18.0 (`unicode()`), so it is judged in those and by the data's answers for Unicode 18.0 (the test data's overlay).
-  Both run in child processes, a record with no answer in 30 seconds counted unanswered, and are judged over UTF-16
-  alone with the global search, replace and split written over their exec. A change to the harness alone, such as new
+  Both run in child processes, whose watchdog thread ends one at an answer that passes 2 seconds of the CPU time of
+  the thread that runs the engine (that answer unanswered, and a new child going on from the next; once three answers
+  of a record have reached the limit, its other answers are unanswered without being asked), and are judged over
+  UTF-16 alone with the global search, replace and split written over their exec. A change to the harness alone, such as new
   counts, is released as a harness release (`gh release create harness-<version>.<n> --latest=false`).
 
 ## Licence

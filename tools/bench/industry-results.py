@@ -15,8 +15,8 @@ is not said.
 
 Each engine that claims ECMA-262 carries its compliance over the ECMA-262 test data, the compliance file its data-set
 runner writes (--compliance: the counts, the runner and the calls it makes, and what it leaves out): this library's
-and std::regex's and SRELL's by tools/dataset (the last two over UTF-16 through their exec, in child processes, a
-record with no answer in 30 s counted unanswered), V8's by tools/benchmarks/v8/dataset.mjs.
+and std::regex's and SRELL's by tools/dataset (the last two over UTF-16 through their exec, in child processes, an
+answer that passes 2 s unanswered), V8's by tools/benchmarks/v8/dataset.mjs.
 Boost.Regex (whose ECMAScript option is its Perl syntax) and RE2 implement other dialects, and carry "not ECMA-262".
 """
 import argparse, json, os, re, sys

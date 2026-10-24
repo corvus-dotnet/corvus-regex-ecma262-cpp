@@ -3,7 +3,7 @@
 // (tools/c/dataset.c in corvus-regex-ecma262-rs) judges it, of which this is a port:
 //
 //   dataset <data directory> <wrong-cases output file> [--engine corvus|std|boost|srell] [--files <filter>]
-//           [--encodings utf16|utf8|both] [--isolate on [--record-seconds 30]] [--compliance <file>]
+//           [--encodings utf16|utf8|both] [--isolate on] [--compliance <file>]
 //
 // With --engine corvus (the default) it judges this library, through corvus/regex_ecma262.hpp alone: is_match, find,
 // captures, captures_all, find_all, replace, replace_all and split, over UTF-16 and UTF-8. The other engines, which a
@@ -27,7 +27,7 @@
 // With --compliance <file>, the engine's compliance object is written to the file, as the benchmark page reads it
 // (docs/implementing-a-source.md in corvus-regex-ecma262-benchmarks): the counts, this runner and the calls it makes in
 // each encoding, and what it leaves out (nothing for this library; for the other engines, UTF-8, the grammars they do
-// not implement, their version of Unicode, the operations written over their exec and, isolated, the record limit).
+// not implement, their version of Unicode and the operations written over their exec).
 #include <corvus/regex_ecma262.hpp>
 
 #include <algorithm>
@@ -49,6 +49,11 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <pthread.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+#include <time.h>
 #include <unistd.h>
 #endif
 
@@ -289,6 +294,101 @@ result test8(compiled& c, std::string_view text, const char** why) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------
+// Answers in a child process (--isolate)
+//
+// An engine with no limit of its own cannot be stopped in a match, so an isolated run judges it in child processes. In
+// a child, each answer the data asks is given between answer_begin and answer_end: they write the counts that changed
+// before it (a verdict) and after it (the answer itself, then "." or, for one right answer and nothing else, "+"), so
+// that the supervisor has every answer given when a child ends; and they note when the engine is about to be called,
+// so that the child's watchdog thread can end the process when one answer passes the limit of the CPU time of the
+// thread that runs the engine (which the load of the machine does not lengthen). The supervisor counts that answer
+// unanswered and starts a child at the next one, which skips the answers before it (answer_begin says not to give
+// them, and drops the verdicts among them, which were written); when the record has had limits_per_record answers at
+// the limit, the child counts its other answers unanswered without giving them. Outside a child, answer_begin says to
+// give every answer and answer_end does nothing.
+
+bool child_process = false;
+// The answers of a record that may reach the limit before its other answers are unanswered without being asked.
+constexpr int limits_per_record = 3;
+// The number of the next answer of the record being judged, and the first that this child gives; whether the record
+// has had limits_per_record answers at the limit.
+size_t next_answer = 0, first_answer = 0;
+bool record_spent = false;
+// When the answer being given began, in nanoseconds of the steady clock plus one; 0 when none is being given.
+std::atomic<long long> answer_started{0};
+// The counts and the number of wrong cases already written for the record being judged.
+counts written;
+size_t written_lines = 0;
+
+// The clock answers are timed by: the CPU time of the thread that runs the engine where the system gives it (set by
+// use_thread_clock on that thread), else the steady clock; in nanoseconds plus one.
+#ifndef _WIN32
+clockid_t answer_clock;
+bool have_answer_clock = false;
+#endif
+
+void use_thread_clock() {
+#ifndef _WIN32
+    have_answer_clock = pthread_getcpuclockid(pthread_self(), &answer_clock) == 0;
+#endif
+}
+
+long long steady_ns() {
+#ifndef _WIN32
+    timespec t;
+    if (have_answer_clock && clock_gettime(answer_clock, &t) == 0) return t.tv_sec * 1000000000LL + t.tv_nsec + 1;
+#endif
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+               .count() +
+           1;
+}
+
+// Writes what was counted since the last write: "D" and the six changes, then each new wrong case as "W"; with done,
+// the end of an answer, "." (or "+" alone for one right answer and nothing else).
+void write_counts(const counts& c, const std::vector<std::string>& w, bool done) {
+    long long d[6] = {c.right - written.right, c.wrong - written.wrong,     c.refused - written.refused,
+                      c.accepted - written.accepted, c.limited - written.limited, c.errors - written.errors};
+    bool one_right = d[0] == 1 && d[1] == 0 && d[2] == 0 && d[3] == 0 && d[4] == 0 && d[5] == 0;
+    if (done && one_right && w.size() == written_lines) {
+        std::printf("+\n");
+    } else {
+        if (d[0] || d[1] || d[2] || d[3] || d[4] || d[5]) {
+            std::printf("D %lld %lld %lld %lld %lld %lld\n", d[0], d[1], d[2], d[3], d[4], d[5]);
+        }
+        for (size_t k = written_lines; k < w.size(); k++) std::printf("W %s\n", w[k].c_str());
+        if (done) std::printf(".\n");
+    }
+    std::fflush(stdout);
+    written = c;
+    written_lines = w.size();
+}
+
+// Whether to give the next answer (false for one the child before this one gave).
+bool answer_begin(counts& c, const std::vector<std::string>& w) {
+    if (!child_process) return true;
+    if (next_answer++ < first_answer) {
+        written = c;
+        written_lines = w.size();
+        return false;
+    }
+    write_counts(c, w, false);
+    if (record_spent) {
+        // The record has had limits_per_record answers at the limit: this one is unanswered, not asked.
+        c.limited++;
+        write_counts(c, w, true);
+        return false;
+    }
+    answer_started = steady_ns();
+    return true;
+}
+
+void answer_end(const counts& c, const std::vector<std::string>& w) {
+    if (!child_process) return;
+    answer_started = 0;
+    write_counts(c, w, true);
+}
+
+// ------------------------------------------------------------------------------------------------------------------
 // The test answers
 
 struct mode {
@@ -356,13 +456,14 @@ void judge_tests(const std::string& name, const json* r, std::u16string_view pat
             for (int encoding = 0; encoding < 2; encoding++) {
                 const char* why = "";
                 result got;
-                if (encoding == 0) {
-                    if (!o.utf16) continue;
-                    got = test16(re, text, &why);
-                } else {
-                    if (!o.utf8 || o.exec || lone_surrogate(text)) continue;
-                    got = test8(re, utf8_lossy(text), &why);
-                }
+                if (encoding == 0 ? !o.utf16 : !o.utf8 || o.exec || lone_surrogate(text)) continue;
+                if (!answer_begin(c, w)) continue;
+                got = encoding == 0 ? test16(re, text, &why) : test8(re, utf8_lossy(text), &why);
+                struct ended {
+                    const counts& c;
+                    const std::vector<std::string>& w;
+                    ~ended() { answer_end(c, w); }
+                } end{c, w};
                 const char* enc = encoding == 0 ? "utf16" : "utf8";
                 std::string line;
                 if (got == result::yes || got == result::no) {
@@ -620,10 +721,8 @@ void judge_mode_exec(judge& j, const json* a, std::u16string_view text, dataset:
     std::vector<size_t> groups(2 * n);
     const char* why = "";
     bool unicode = re.unicode();
-    // An answer never given (a limit or an error) leaves every answer of the test and grammar after it unanswered too,
-    // since each is built on the matches before it.
+    // An answer the engine gives none for (a limit of its own, or an error) is unanswered; the others are each asked.
     result failure = result::no;
-    long long before = j.c.right + j.c.wrong;
     auto exec = [&](dataset::exec_regex& r, size_t from, size_t* out) -> int {
         if (from > text.size()) return 0;
         result got = r.exec(text, from, out, &why);
@@ -633,49 +732,65 @@ void judge_mode_exec(judge& j, const json* a, std::u16string_view text, dataset:
         }
         return got == result::yes ? 1 : 0;
     };
+    // One answer: right or wrong, or nothing when the engine gave none.
+    auto ask = [&](const char* what, auto&& judged) {
+        if (!answer_begin(j.c, j.w)) return;
+        failure = result::no;
+        std::optional<bool> ok = judged();
+        if (ok) {
+            j.check(what, *ok);
+        } else if (failure == result::limit) {
+            j.c.limited++;
+            j.w.push_back("LIMIT\tcaptures.jsonl\t" + j.where + "\t" + what + "\t" + why);
+        } else {
+            j.c.errors++;
+            j.w.push_back("ERROR\tcaptures.jsonl\t" + j.where + "\t" + what + "\t" + why);
+        }
+        answer_end(j.c, j.w);
+    };
 
-    // The answers in order, a lambda so that the first answer never given ends them (MSVC reads a lambda called where
-    // it is written, at the start of a statement, as an attribute, so it is named first).
-    auto answer_all = [&] {
-        exec_answer want = exec_of(json_get(a, "exec"));
+    ask("exec", [&]() -> std::optional<bool> {
         int rc = exec(re, 0, groups.data());
-        if (rc < 0) return;
-        j.check("exec", same_slots(want, rc == 1, groups.data(), n, none));
+        if (rc < 0) return std::nullopt;
+        return same_slots(exec_of(json_get(a, "exec")), rc == 1, groups.data(), n, none);
+    });
 
-        // The global search.
-        {
-            const json* all_j = json_get(a, "all");
-            size_t all_len = all_j && all_j->kind == JSON_ARRAY ? all_j->len : 0;
-            size_t found = 0, pos = 0;
-            bool ok = true;
-            while (found < 20) {
-                rc = exec(re, pos, groups.data());
-                if (rc < 0) return;
-                if (rc != 1) break;
-                size_t s = groups[0], e = groups[1];
-                pos = s == e ? advance16(text, e, unicode) : e;
-                if (found < all_len && !same_slots(exec_of(&all_j->items[found]), true, groups.data(), n, none)) ok = false;
-                found++;
-            }
-            j.check("all", (all_len < 20 ? found == all_len : found >= 20) && ok);
+    // The global search.
+    ask("all", [&]() -> std::optional<bool> {
+        const json* all_j = json_get(a, "all");
+        size_t all_len = all_j && all_j->kind == JSON_ARRAY ? all_j->len : 0;
+        size_t found = 0, pos = 0;
+        bool ok = true;
+        while (found < 20) {
+            int rc = exec(re, pos, groups.data());
+            if (rc < 0) return std::nullopt;
+            if (rc != 1) break;
+            size_t s = groups[0], e = groups[1];
+            pos = s == e ? advance16(text, e, unicode) : e;
+            if (found < all_len && !same_slots(exec_of(&all_j->items[found]), true, groups.data(), n, none)) ok = false;
+            found++;
         }
+        return (all_len < 20 ? found == all_len : found >= 20) && ok;
+    });
 
-        // sticky at 1, by the y flag of the engine.
-        if (!text.empty()) {
-            exec_answer sticky = exec_of(json_get(a, "sticky"));
+    // sticky at 1, by the y flag of the engine.
+    if (!text.empty()) {
+        ask("sticky", [&]() -> std::optional<bool> {
             std::vector<size_t> ygroups(2 * y.groups());
-            rc = exec(y, 1, ygroups.data());
-            if (rc < 0) return;
-            j.check("sticky", same_slots(sticky, rc == 1, ygroups.data(), y.groups(), none));
-        }
+            int rc = exec(y, 1, ygroups.data());
+            if (rc < 0) return std::nullopt;
+            return same_slots(exec_of(json_get(a, "sticky")), rc == 1, ygroups.data(), y.groups(), none);
+        });
+    }
 
-        // replace and replaceAll.
-        for (int global = 0; global < 2; global++) {
+    // replace and replaceAll.
+    for (int global = 0; global < 2; global++) {
+        ask(global ? "replaceAll" : "replace", [&]() -> std::optional<bool> {
             std::u16string out;
             size_t last = 0, pos = 0;
             for (;;) {
-                rc = exec(re, pos, groups.data());
-                if (rc < 0) return;
+                int rc = exec(re, pos, groups.data());
+                if (rc < 0) return std::nullopt;
                 if (rc != 1) break;
                 size_t s = groups[0], e = groups[1];
                 out.append(text.substr(last, s - last));
@@ -686,23 +801,25 @@ void judge_mode_exec(judge& j, const json* a, std::u16string_view text, dataset:
             }
             out.append(text.substr(last));
             const json* want_j = json_string(json_get(a, global ? "replaceAll" : "replace"));
-            j.check(global ? "replaceAll" : "replace", want_j && units(want_j) == out);
-        }
+            return want_j && units(want_j) == out;
+        });
+    }
 
-        // split and split3.
-        for (int k = 0; k < 2; k++) {
+    // split and split3.
+    for (int k = 0; k < 2; k++) {
+        ask(k == 0 ? "split" : "split3", [&]() -> std::optional<bool> {
             size_t most = k == 0 ? 0xFFFFFFFFu : 3;
             std::vector<std::optional<std::u16string_view>> out;
             if (text.empty()) {
-                rc = exec(re, 0, groups.data());
-                if (rc < 0) return;
+                int rc = exec(re, 0, groups.data());
+                if (rc < 0) return std::nullopt;
                 if (rc != 1) out.emplace_back(text);
             } else {
                 size_t p = 0, q = 0;
                 bool stop = false;
                 while (q < text.size() && !stop) {
-                    rc = exec(re, q, groups.data());
-                    if (rc < 0) return;
+                    int rc = exec(re, q, groups.data());
+                    if (rc < 0) return std::nullopt;
                     if (rc != 1) break;
                     size_t s = groups[0], e = groups[1];
                     if (s >= text.size()) break;
@@ -732,21 +849,8 @@ void judge_mode_exec(judge& j, const json* a, std::u16string_view text, dataset:
                 }
                 if (out.size() < most) out.emplace_back(text.substr(p));
             }
-            j.check(k == 0 ? "split" : "split3", same_split(json_get(a, k == 0 ? "split" : "split3"), out));
-        }
-    };
-    answer_all();
-
-    if (failure == result::limit || failure == result::error) {
-        // Each of the seven answers (six for an empty text, which has no sticky answer) not given.
-        long long missing = (text.empty() ? 6 : 7) - (j.c.right + j.c.wrong - before);
-        if (failure == result::limit) {
-            j.c.limited += missing;
-            j.w.push_back("LIMIT\tcaptures.jsonl\t" + j.where + "\t" + why);
-        } else {
-            j.c.errors += missing;
-            j.w.push_back("ERROR\tcaptures.jsonl\t" + j.where + "\t" + why);
-        }
+            return same_split(json_get(a, k == 0 ? "split" : "split3"), out);
+        });
     }
 }
 
@@ -1030,20 +1134,22 @@ void judge_exec(const json* r, std::u16string_view pattern, const options& o, co
             if (failure == result::limit || failure == result::error) return failure;
             return same_exec_answer(answer, got, carries, map) ? result::yes : result::no;
         };
-        if (o.utf16) {
+        if (o.utf16 && answer_begin(c, w)) {
             result outcome = answer_of(
                 [&](result& failure) {
                     return o.exec ? exec_other(*re.exec, text, start, failure, &why) : exec_corvus(*re.corvus, text, start);
                 },
                 {});
             count_exec(c, w, where, "utf16", outcome, why);
+            answer_end(c, w);
         }
-        if (o.utf8 && !o.exec && !lone_surrogate(text) && !inside_pair(text, start)) {
+        if (o.utf8 && !o.exec && !lone_surrogate(text) && !inside_pair(text, start) && answer_begin(c, w)) {
             std::string utf8 = utf8_lossy(text);
             std::vector<size_t> byte_at = byte_offsets(text);
             result outcome = answer_of(
                 [&](result&) { return exec_corvus(*re.corvus, std::string_view(utf8), byte_at[start]); }, byte_at);
             count_exec(c, w, where, "utf8", outcome, why);
+            answer_end(c, w);
         }
     }
 }
@@ -1090,51 +1196,50 @@ bool glob(std::string_view pattern, std::string_view name) {
 // ------------------------------------------------------------------------------------------------------------------
 // Running an engine with no bound of its own in child processes (POSIX)
 //
-// An engine that has no limit of time can backtrack for hours on one record, and one that recurses can overflow its
-// stack. So with --isolate each worker's records run in a child process (`dataset --child ...`), which reports each
-// record as it starts and ends; a record that has not ended within --record-seconds, or whose child stops, is counted
-// as unanswered, every answer it asks, and its child is replaced by one that goes on from the next record.
+// An engine that has no limit of time can backtrack for hours on one answer, and one that recurses can overflow its
+// stack. So with --isolate each worker's records run in a child process (`dataset --child ...`), which writes each
+// record as it starts and ends and each answer as it gives it (answer_begin and answer_end). Its watchdog thread ends
+// it when an answer passes the limit; an answer that ends a child so, or that a child dies in, is unanswered, and a new
+// child goes on from the next answer.
 
-// The answers a record asks of an engine over UTF-16 alone: what an unanswered record counts as reaching a limit.
-long long answers_asked(const std::string& name, const json* r) {
-    long long n = 0;
-    const json* tests = json_get(r, "tests");
-    if (name == exec_file) {
-        if (!asks(grammar_of(utf8_lossy(units(json_string(json_get(r, "flags"))))))) return 0;
-        for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
-            if (!json_is_true(json_get(&tests->items[t], "v8_deviation"))) n++;
-        }
-        return n;
-    }
-    if (name == "captures.jsonl") {
-        const json* valid = json_get(r, "valid");
-        for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
-            const json* test = &tests->items[t];
-            if (json_is_true(json_get(test, "v8_deviation"))) continue;
-            const json* text = json_string(json_get(test, "text"));
-            if (!text) continue;
-            for (const char* m : {"unicode", "legacy"}) {
-                if (asks(m) && json_is_true(json_get(valid, m)) && json_get(test, m)) n += text->len == 0 ? 6 : 7;
+// How long a child may go without a word before it is taken for lost (its watchdog ends it within `limit` of an answer
+// that does not finish; this catches a child stuck anywhere else).
+constexpr auto silence = std::chrono::seconds(60);
+
+#ifndef _WIN32
+// The child's watchdog: ends the process, writing "L", when an answer has run for `limit`. The engine is in a match on
+// the other thread, holding what it holds, so nothing that could take a lock (stdout's, the allocator's) is run.
+void start_watchdog() {
+    std::thread([] {
+        long long most = std::chrono::duration_cast<std::chrono::nanoseconds>(limit).count();
+        for (;;) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            long long started = answer_started.load();
+            if (started != 0 && steady_ns() - started > most) {
+                ssize_t ignored = write(1, "\nL\n", 3);
+                (void)ignored;
+                _exit(0);
             }
         }
-        return n;
-    }
-    for (const mode& m : modes_of(r)) {
-        if (!m.valid) continue;
-        for (size_t t = 0; tests && tests->kind == JSON_ARRAY && t < tests->len; t++) {
-            bool expected;
-            if (json_as_bool(json_get(&tests->items[t], m.answer), &expected) &&
-                json_string(json_get(&tests->items[t], "text"))) {
-                n++;
-            }
-        }
-    }
-    return n;
+    }).detach();
 }
+#endif
 
-// The child: records first to last of one file, each reported as R <index>, its wrong cases as W lines, and its
-// counts as C <right> <wrong> <refused> <accepted> <limited> <errors> (S for a record left out); D at the end.
-int run_child(const std::string& directory, const std::string& name, const options& o, size_t first, size_t last) {
+// The child: records first to last of one file from answer first_given of record first (with spent, that record has had
+// limits_per_record answers at the limit), each record written as
+// R <index> (S for one left out) and E at its end, its answers and counts as answer_end writes them; DONE at the end.
+int run_child(const std::string& directory, const std::string& name, const options& o, size_t first, size_t last,
+              size_t first_given, bool spent) {
+    child_process = true;
+#ifdef __linux__
+    // No core when the engine crashes it (an overflow of its stack, say), which is counted as unanswered: where the
+    // system pipes cores to a program (WSL does), writing a large core would hold the child for a minute.
+    prctl(PR_SET_DUMPABLE, 0);
+#endif
+    use_thread_clock();
+#ifndef _WIN32
+    start_watchdog();
+#endif
     std::ifstream in(std::filesystem::path(directory) / name, std::ios::binary);
     std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     size_t index = 0;
@@ -1158,33 +1263,40 @@ int run_child(const std::string& directory, const std::string& name, const optio
             } else {
                 counts c;
                 std::vector<std::string> w;
+                written = counts{};
+                written_lines = 0;
+                next_answer = 0;
+                first_answer = index == first ? first_given : 0;
+                record_spent = index == first && spent;
                 judge_record(name, r, o, c, w);
-                for (const auto& line : w) std::printf("W %s\n", line.c_str());
-                std::printf("C %lld %lld %lld %lld %lld %lld\n", c.right, c.wrong, c.refused, c.accepted, c.limited,
-                            c.errors);
+                write_counts(c, w, false);
+                std::printf("E\n");
             }
             std::fflush(stdout);
             json_arena_free(arena);
         }
         p = end + 1;
     }
-    std::printf("D\n");
+    std::printf("DONE\n");
     std::fflush(stdout);
     return 0;
 }
 
 #ifndef _WIN32
 // The parent's side of one worker: records first to last of a file, through as many children as it takes.
-void supervise(const std::vector<std::string>& child_args, const std::string& name,
-               const std::vector<std::string_view>& lines, size_t first, size_t last, double record_seconds,
+void supervise(const std::vector<std::string>& child_args, const std::string& name, size_t first, size_t last,
                counts& c, std::vector<std::string>& w, long long& records, long long& skipped) {
-    size_t start = first;
-    while (start < last) {
+    size_t record = first, from_answer = 0;
+    // The answers of `record` at the limit so far.
+    int at_limit = 0;
+    while (record < last) {
         int fd[2];
         if (pipe(fd) != 0) throw std::runtime_error("pipe");
         std::vector<std::string> args = child_args;
-        args.push_back(std::to_string(start));
+        args.push_back(std::to_string(record));
         args.push_back(std::to_string(last));
+        args.push_back(std::to_string(from_answer));
+        args.push_back(at_limit >= limits_per_record ? "1" : "0");
         pid_t pid = fork();
         if (pid == 0) {
             dup2(fd[1], 1);
@@ -1197,23 +1309,24 @@ void supervise(const std::vector<std::string>& child_args, const std::string& na
             _exit(127);
         }
         close(fd[1]);
-        size_t current = unset, next_start = start;
-        bool done = false, timed_out = false;
-        std::vector<std::string> pending;
+        // The record being judged and the number of its answers given so far.
+        size_t current = record, given = from_answer;
+        bool done = false;
+        std::string why;
         std::string buffer;
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(record_seconds);
-        for (;;) {
-            auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-            if (current != unset && left.count() <= 0) {
-                timed_out = true;
+        while (!done && why.empty()) {
+            pollfd p{fd[0], POLLIN, 0};
+            int ready = poll(&p, 1, static_cast<int>(std::chrono::milliseconds(silence).count()));
+            if (ready == 0) {
+                why = "nothing written in 60 s";
                 break;
             }
-            pollfd p{fd[0], POLLIN, 0};
-            int ready = poll(&p, 1, current != unset ? static_cast<int>(left.count()) : 1000);
-            if (ready == 0) continue;
             char chunk[65536];
             ssize_t got = read(fd[0], chunk, sizeof chunk);
-            if (got <= 0) break;
+            if (got <= 0) {
+                why = "the process died";
+                break;
+            }
             buffer.append(chunk, static_cast<size_t>(got));
             size_t at;
             while ((at = buffer.find('\n')) != std::string::npos) {
@@ -1221,58 +1334,56 @@ void supervise(const std::vector<std::string>& child_args, const std::string& na
                 buffer.erase(0, at + 1);
                 if (line.starts_with("R ")) {
                     current = std::stoull(line.substr(2));
-                    deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(record_seconds);
+                    given = current == record ? from_answer : 0;
+                } else if (line == "+") {
+                    c.right++;
+                    given++;
+                } else if (line == ".") {
+                    given++;
+                } else if (line.starts_with("D ")) {
+                    counts d;
+                    std::sscanf(line.c_str() + 2, "%lld %lld %lld %lld %lld %lld", &d.right, &d.wrong, &d.refused,
+                                &d.accepted, &d.limited, &d.errors);
+                    c.add(d);
                 } else if (line.starts_with("W ")) {
-                    pending.push_back(line.substr(2));
+                    w.push_back(line.substr(2));
                 } else if (line == "S") {
                     skipped++;
-                    next_start = current + 1;
-                    current = unset;
-                } else if (line.starts_with("C ")) {
-                    counts r;
-                    std::sscanf(line.c_str() + 2, "%lld %lld %lld %lld %lld %lld", &r.right, &r.wrong, &r.refused,
-                                &r.accepted, &r.limited, &r.errors);
-                    c.add(r);
-                    for (auto& l : pending) w.push_back(std::move(l));
-                    pending.clear();
+                } else if (line == "E") {
                     records++;
-                    next_start = current + 1;
-                    current = unset;
-                } else if (line == "D") {
+                } else if (line == "L") {
+                    why = "no answer in 2 s";
+                    break;
+                } else if (line == "DONE") {
                     done = true;
+                    break;
                 }
             }
-            if (done) break;
         }
         if (!done) kill(pid, SIGKILL);
         close(fd[0]);
         int status = 0;
         waitpid(pid, &status, 0);
         if (done) break;
-        // The record in progress gave no answer: each answer it asks is counted as reaching a limit.
-        size_t lost = current != unset ? current : next_start;
-        if (lost >= last) break;
-        json_arena* arena;
-        const char* error;
-        json* r = json_parse(lines[lost].data(), lines[lost].size(), &arena, &error);
-        if (r && json_is_true(json_get(r, "v8_deviation"))) {
-            skipped++;
-        } else if (r) {
-            records++;
-            c.limited += answers_asked(name, r);
-            char what[64];
-            std::snprintf(what, sizeof what, timed_out ? "no answer in %.0f s" : "the engine stopped", record_seconds);
-            w.push_back("LIMIT\t" + name + "\trecord " + std::to_string(lost + 1) + "\t" + what);
+        // The answer being given is unanswered (the judging rule of the test data); the next child goes on from the
+        // one after it.
+        c.limited++;
+        w.push_back("LIMIT\t" + name + "\trecord " + std::to_string(current + 1) + " answer " + std::to_string(given + 1) +
+                    "\t" + why);
+        if (current != record) at_limit = 0;
+        if (++at_limit == limits_per_record) {
+            w.push_back("LIMIT\t" + name + "\trecord " + std::to_string(current + 1) + "\tits answers after answer " +
+                        std::to_string(given + 1) + " not asked: " + std::to_string(limits_per_record) + " at the limit");
         }
-        if (r) json_arena_free(arena);
-        start = lost + 1;
+        record = current;
+        from_answer = given + 1;
     }
 }
 #endif
 
 // Writes the engine's compliance as the benchmark page reads it: the counts, this runner and the calls it makes in each
 // encoding it asked in, and what it leaves out.
-void write_compliance(const std::string& path, const options& o, bool isolate, double record_seconds, const counts& t) {
+void write_compliance(const std::string& path, const options& o, const counts& t) {
     auto list = [](const std::vector<std::string>& calls) {
         std::string out;
         for (const auto& call : calls) out += (out.empty() ? "\"" : ",\"") + call + "\"";
@@ -1289,11 +1400,6 @@ void write_compliance(const std::string& path, const options& o, bool isolate, d
         if (!left.empty()) excludes += R"(,{"class":"grammar","leaves":[)" + list(left) + "]}";
         if (!o.exec->unicode().empty()) excludes += R"(,{"class":"unicode","version":")" + o.exec->unicode() + "\"}";
         excludes += R"(,{"class":"operations","leaves":["global","replace","split"]})";
-        if (isolate) {
-            char limit_text[64];
-            std::snprintf(limit_text, sizeof limit_text, R"(,{"class":"record-limit","seconds":%.0f})", record_seconds);
-            excludes += limit_text;
-        }
     } else {
         // Each member over a std::u16string_view (UTF-16) or a std::string_view (UTF-8).
         auto over = [](const char* text, bool split) {
@@ -1321,8 +1427,9 @@ void write_compliance(const std::string& path, const options& o, bool isolate, d
 }  // namespace
 
 int main(int argc, char** argv) {
-    // dataset --child <directory> <file> <engine> <encodings> <first> <last>: one worker of an isolated run.
-    if (argc == 8 && std::string_view(argv[1]) == "--child") {
+    // dataset --child <directory> <file> <engine> <encodings> <first> <last> <first answer> <spent: 0|1>: one worker of
+    // an isolated run.
+    if (argc == 10 && std::string_view(argv[1]) == "--child") {
         options o;
         std::string enc = argv[5];
         o.utf16 = enc == "both" || enc == "utf16";
@@ -1335,30 +1442,29 @@ int main(int argc, char** argv) {
             o.exec = exec.get();
         }
         int status = 2;
-        dataset::thread t([&] { status = run_child(argv[2], argv[3], o, std::stoull(argv[6]), std::stoull(argv[7])); },
-                          std::size_t(256) << 20);
+        dataset::thread t(
+            [&] {
+                status = run_child(argv[2], argv[3], o, std::stoull(argv[6]), std::stoull(argv[7]), std::stoull(argv[8]),
+                                   std::string_view(argv[9]) == "1");
+            },
+            std::size_t(256) << 20);
         t.join();
         return status;
     }
     if (argc < 3) {
         std::fprintf(stderr,
                      "usage: %s <data directory> <wrong-cases file> [--engine corvus|...] [--files <filter>] "
-                     "[--encodings utf16|utf8|both] [--isolate on [--record-seconds 30]] [--compliance <file>]\n",
+                     "[--encodings utf16|utf8|both] [--isolate on] [--compliance <file>]\n",
                      argv[0]);
         return 2;
     }
     std::string directory = argv[1], wrong_path = argv[2], filter = "*.jsonl", encodings = "both", engine = "corvus";
     bool isolate = false;
-    // The one limit on a record of an engine that cannot be stopped in a match (docs/implementing-a-source.md in
-    // corvus-regex-ecma262-benchmarks).
-    double record_seconds = 30;
     std::string compliance;
     for (int k = 3; k + 1 < argc; k += 2) {
         std::string_view flag = argv[k];
         if (flag == "--isolate") {
             isolate = std::string_view(argv[k + 1]) == "on";
-        } else if (flag == "--record-seconds") {
-            record_seconds = std::stod(argv[k + 1]);
         } else if (flag == "--engine") {
             engine = argv[k + 1];
         } else if (flag == "--files") {
@@ -1471,7 +1577,7 @@ int main(int argc, char** argv) {
                     counts c;
                     std::vector<std::string> w;
                     long long rec = 0, skip = 0;
-                    supervise(child_args, name, lines, first, last, record_seconds, c, w, rec, skip);
+                    supervise(child_args, name, first, last, c, w, rec, skip);
                     std::lock_guard<std::mutex> g(lock);
                     file_total.add(c);
                     wrong.insert(wrong.end(), std::make_move_iterator(w.begin()), std::make_move_iterator(w.end()));
@@ -1500,7 +1606,7 @@ int main(int argc, char** argv) {
         for (const auto& line : wrong) std::fprintf(out, "%s\n", line.c_str());
         std::fclose(out);
     }
-    if (!compliance.empty()) write_compliance(compliance, o, isolate, record_seconds, total);
+    if (!compliance.empty()) write_compliance(compliance, o, total);
     std::printf(
         "\nrecords %lld (skipped %lld deviations)  right %lld  wrong %lld  refused-valid %lld  accepted-invalid %lld  "
         "limit %lld  errors %lld  in %.1fs\n",
