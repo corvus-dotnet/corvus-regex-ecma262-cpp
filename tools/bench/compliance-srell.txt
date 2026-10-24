@@ -1,22 +1,22 @@
-data 766d23da87b14ea5ec06f8f439e3e4bea9ebbe09
-anchored-lists.jsonl     right     341036  wrong      4  refused-valid    0  accepted-invalid    0  limit    0     0.1s
-backreferences.jsonl     right     461849  wrong     37  refused-valid   18  accepted-invalid    0  limit  821    25.4s
-captures.jsonl           right    1805340  wrong   5103  refused-valid 1960  accepted-invalid    0  limit 1747    51.1s
-case-folding.jsonl       right     255553  wrong      0  refused-valid    6  accepted-invalid    0  limit    3    51.8s
-code-units.jsonl         right     136571  wrong     34  refused-valid    0  accepted-invalid    0  limit    0    52.0s
-empty-loops.jsonl        right     314404  wrong     35  refused-valid  226  accepted-invalid   34  limit  761   106.8s
-engine-faults.jsonl      right     319600  wrong     14  refused-valid  148  accepted-invalid   13  limit  778   146.0s
-flags.jsonl              right     119028  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   146.1s
-generated.jsonl          right     115360  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   146.4s
-hand-written.jsonl       right     149593  wrong     11  refused-valid    3  accepted-invalid    4  limit    0   146.5s
-ill-formed-utf8.jsonl    right          0  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   146.5s
-line-terminators.jsonl   right     300000  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   146.6s
-lone-surrogates.jsonl    right      33426  wrong    200  refused-valid    0  accepted-invalid    0  limit    0   146.6s
-lookarounds.jsonl        right     584398  wrong     25  refused-valid   28  accepted-invalid    0  limit 2064   284.4s
-start-searches.jsonl     right      72001  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   284.4s
-test262-lone-surrogates.jsonl right      20652  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   284.6s
-test262.jsonl            right    1086009  wrong      2  refused-valid    2  accepted-invalid   12  limit    0   285.1s
-unicode-sets.jsonl       right     915543  wrong    207  refused-valid    3  accepted-invalid   14  limit    0   287.3s
-word-boundaries.jsonl    right     534066  wrong     75  refused-valid   29  accepted-invalid    0  limit    0   287.5s
+data cff0860b7ebc5eb9c801eb9f8cec9d5398688ff2
+anchored-lists.jsonl     right     341036  wrong      4  refused-valid    0  accepted-invalid    0  limit    0     0.2s
+backreferences.jsonl     right     461849  wrong     37  refused-valid   18  accepted-invalid    0  limit  821    30.6s
+captures.jsonl           right    1806546  wrong   5081  refused-valid 1960  accepted-invalid    0  limit 1747    57.2s
+case-folding.jsonl       right     255553  wrong      0  refused-valid    6  accepted-invalid    0  limit    3    57.9s
+code-units.jsonl         right     136571  wrong     34  refused-valid    0  accepted-invalid    0  limit    0    58.0s
+empty-loops.jsonl        right     314404  wrong     35  refused-valid  226  accepted-invalid   34  limit  761   112.9s
+engine-faults.jsonl      right     319522  wrong     14  refused-valid  148  accepted-invalid   13  limit  856   154.7s
+flags.jsonl              right     119028  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   154.8s
+generated.jsonl          right     115360  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   155.2s
+hand-written.jsonl       right     149593  wrong     11  refused-valid    3  accepted-invalid    4  limit    0   155.3s
+ill-formed-utf8.jsonl    right          0  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   155.3s
+line-terminators.jsonl   right     300000  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   155.5s
+lone-surrogates.jsonl    right      33426  wrong    200  refused-valid    0  accepted-invalid    0  limit    0   155.6s
+lookarounds.jsonl        right     584398  wrong     25  refused-valid   28  accepted-invalid    0  limit 2064   293.6s
+start-searches.jsonl     right      72001  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   293.6s
+test262-lone-surrogates.jsonl right      24804  wrong      0  refused-valid    0  accepted-invalid    0  limit    0   293.8s
+test262.jsonl            right    1215400  wrong      2  refused-valid    6  accepted-invalid   12  limit    0   294.3s
+unicode-sets.jsonl       right     915543  wrong    207  refused-valid    3  accepted-invalid   14  limit    0   296.6s
+word-boundaries.jsonl    right     534066  wrong     75  refused-valid   29  accepted-invalid    0  limit    0   296.8s
 
-records 122856 (skipped 231 deviations)  right 7564429  wrong 5747  refused-valid 2423  accepted-invalid 77  limit 6174  errors 0  in 287.5s
+records 123601 (skipped 232 deviations)  right 7699100  wrong 5725  refused-valid 2427  accepted-invalid 77  limit 6252  errors 0  in 296.8s
