@@ -359,6 +359,108 @@ static void timeouts() {
     CHECK(!none.match_timeout());
 }
 
+// The edition and the version of Unicode: each independent of the other, and resolved when the pattern is compiled.
+static void editions() {
+    using std::chrono::milliseconds;
+    using ed = re::edition;
+    using uv = re::unicode_version;
+    auto with = [](ed e, uv u) { return re::regex::options{std::nullopt, e, u}; };
+    re::regex a("a");
+    CHECK(a.edition() == ed::current && a.unicode_version() == 17);
+    CHECK(re::default_unicode_version == 17 && re::latest_unicode_version == 18);
+    CHECK((re::unicode_versions == std::array<int, 3>{13, 17, 18}));
+    CHECK(re::regex("a", "", with(ed::current, uv::v8)).unicode_version() == 17);
+    CHECK(re::regex("a", "", with(ed::current, uv::v13)).unicode_version() == 13);
+    CHECK(re::regex("a", "", with(ed::current, uv::v17)).unicode_version() == 17);
+    CHECK(re::regex("a", "", with(ed::current, uv::v18)).unicode_version() == 18);
+    CHECK(re::regex("a", "", with(ed::current, uv::latest)).unicode_version() == re::latest_unicode_version);
+    CHECK(throws(re::errc::invalid_argument, [&] { re::regex("a", "", with(ed::current, static_cast<uv>(12))); }));
+    CHECK(throws(re::errc::invalid_argument, [&] { re::regex("a", "", with(static_cast<ed>(2), uv::v8)); }));
+
+    // Each version has its own scripts.
+    CHECK(!re::regex::is_valid(R"(\p{Script=Vithkuqi})", "u", ed::current, uv::v13));
+    CHECK(re::regex::is_valid(R"(\p{Script=Vithkuqi})", "u"));
+    CHECK(re::regex::is_valid(R"(\p{Script=Yezidi})", "u", ed::current, uv::v13));
+    CHECK(!re::regex::is_valid(R"(\p{Script=Jurchen})", "u"));
+    CHECK(re::regex::is_valid(R"(\p{scx=Jurc})", "u", ed::current, uv::v18));
+    CHECK(re::regex::is_valid(R"(\p{Script=Jurchen})", "u", ed::current, uv::latest));
+    CHECK(throws(re::errc::invalid_pattern, [&] { re::regex(R"(\p{Script=Vithkuqi})", "u", with(ed::current, uv::v13)); }));
+
+    // A property and case folding are the version's.
+    const char* l10570 = "\xF0\x90\x95\xB0";
+    const char* l10597 = "\xF0\x90\x96\x97";
+    CHECK(re::regex(R"(^\p{Ll}$)", "u").is_match(l10597));
+    CHECK(!re::regex(R"(^\p{Ll}$)", "u", with(ed::current, uv::v13)).is_match(l10597));
+    CHECK(re::regex(l10570, "iu").is_match(l10597));
+    CHECK(!re::regex(l10570, "iu", with(ed::current, uv::v13)).is_match(l10597));
+    CHECK(re::regex(u8"Ꟁ", "i").is_match(u8"ꟁ"));
+    CHECK(!re::regex(u8"Ꟁ", "i", with(ed::current, uv::v13)).is_match(u8"ꟁ"));
+
+    // A case-insensitive backreference folds as its version folds, over UTF-8 and UTF-16.
+    struct fold {
+        const char* flags;
+        std::u8string text, twice;
+        std::u16string text16;
+    };
+    for (const fold& f : {fold{"iu", u8"\U00010570\U00010597", u8"\U00010570\U00010570", u"\U00010570\U00010597"},
+                          fold{"i", u8"Ꟁꟁ", u8"ꟀꟀ", u"Ꟁꟁ"}}) {
+        for (const char* pattern : {R"((.)\1)", R"((?<=\1(.)))", R"((?:x|(.))+\1$)"}) {
+            for (uv v : {uv::v17, uv::v18}) {
+                re::regex r(pattern, f.flags, with(ed::current, v));
+                CHECK(r.is_match(f.text));
+                CHECK(r.is_match(f.text16));
+            }
+            re::regex r(pattern, f.flags, with(ed::current, uv::v13));
+            CHECK(!r.is_match(f.text));
+            CHECK(!r.is_match(f.text16));
+            CHECK(r.is_match(f.twice));
+        }
+    }
+
+    // The grammar of 2020 refuses what later editions added, and accepts what it had.
+    struct pf {
+        const char* pattern;
+        const char* flags;
+    };
+    for (const pf& c : {pf{"(?i:a)", ""}, pf{"(?-i:a)", "i"}, pf{"(?s:.)", "u"}, pf{"(?<a>x)|(?<a>y)", ""},
+                        pf{"(?<a>x)|(?<a>y)", "u"}, pf{R"(\p{Script=Yezidi})", "u"}, pf{R"(\p{sc=Vith})", "u"},
+                        pf{R"(\p{Script_Extensions=Toto})", "u"}}) {
+        CHECK(throws(re::errc::invalid_pattern, [&] { re::regex(c.pattern, c.flags, with(ed::es2020, uv::latest)); }));
+        CHECK(!re::regex::is_valid(c.pattern, c.flags, ed::es2020, uv::latest));
+        CHECK(re::regex(c.pattern, c.flags, with(ed::current, uv::latest)).edition() == ed::current);
+    }
+    for (const pf& c : {pf{R"(\p{Script=Greek})", "u"}, pf{R"(\p{L}\p{gc=Lu}\p{Lowercase})", "u"},
+                        pf{R"(\P{scx=Latn})", "iu"}, pf{R"(\p{Script=Yezidi})", ""}, pf{R"((?<a>x)(?<b>y)\k<a>)", "u"},
+                        pf{"(?<=a)(?<!b)", "s"}, pf{"(?:i)", ""}}) {
+        re::regex r(c.pattern, c.flags, with(ed::es2020, uv::v13));
+        CHECK(r.edition() == ed::es2020 && r.unicode_version() == 13);
+    }
+    for (const char* flags : {"d", "v", "dv", "gv"}) {
+        CHECK(throws(re::errc::invalid_flags, [&] { re::regex("a", flags, with(ed::es2020, uv::v8)); }));
+        CHECK(!re::regex::is_valid("a", flags, ed::es2020, uv::v8));
+        (void)re::regex("a", flags);
+    }
+
+    // The settings and a timeout go together; try_compile takes them, so a check needs no default timeout.
+    std::string long_text(60, 'a');
+    long_text += 'b';
+    re::regex timed(R"(^(?:(a+)\1*)+$)", "u", re::regex::options{milliseconds(30), ed::es2020, uv::v13});
+    CHECK(timed.match_timeout() == milliseconds(30));
+    CHECK(timed.edition() == ed::es2020 && timed.unicode_version() == 13);
+    CHECK(throws(re::errc::match_limit, [&] { (void)timed.is_match(long_text); }));
+    std::error_code ec;
+    CHECK(!re::regex::try_compile("(?i:a)", "", re::regex::options{milliseconds(30), ed::es2020}, ec));
+    CHECK(ec == re::errc::invalid_pattern);
+    CHECK(!re::regex::try_compile("a", "v", re::regex::options{milliseconds(30), ed::es2020}, ec));
+    CHECK(ec == re::errc::invalid_flags);
+    std::optional<re::regex> checked = re::regex::try_compile("a+", "u", re::regex::options{milliseconds(30), ed::es2020}, ec);
+    CHECK(checked && !ec && checked->match_timeout() == milliseconds(30) && checked->is_match("aa"));
+    re::regex::set_default_match_timeout(milliseconds(30));
+    re::regex settled("a", "", with(ed::es2020, uv::v18));
+    re::regex::set_default_match_timeout(std::nullopt);
+    CHECK(settled.match_timeout() == milliseconds(30));
+}
+
 static void threads() {
     // A regex is immutable: threads share it.
     re::regex r(R"(\w+)", "g");
@@ -421,6 +523,7 @@ int main() {
     CHECK(re::library_version().size() >= 5);
     CHECK(CORVUS_REGEX_ECMA262_CPP_VERSION_MAJOR == CRE_VERSION_MAJOR);
     CHECK(CORVUS_REGEX_ECMA262_CPP_VERSION_MINOR == CRE_VERSION_MINOR);
+    CHECK(CORVUS_REGEX_ECMA262_CPP_VERSION_PATCH == CRE_VERSION_PATCH);
     compiling();
     matching_utf8();
     matching_utf16();
@@ -430,6 +533,7 @@ int main() {
     splitting();
     limits();
     timeouts();
+    editions();
     threads();
     on_small_stack(nested_classes);
     std::printf("%d checks, %d failed\n", checks, failures);
