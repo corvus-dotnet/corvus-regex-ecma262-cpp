@@ -26,6 +26,11 @@
 //   each of its matches the timeout, and the overloads that take a std::chrono::milliseconds give one match a limit
 //   of their own. Without a timeout a match has no limit of time or of memory, so give a pattern or a text from
 //   outside one.
+// - A pattern is read in the grammar of an edition (edition::current, today's, or edition::es2020, which JSON Schema
+//   2020-12 names) and under a version of Unicode (unicode_version::v8, the version of the V8 the answers are held to,
+//   17 today; v13, v17, v18; or latest, 18 today), each independent of the other and settled when it is compiled, so
+//   that they cost a match nothing: regex::options carries them with a match timeout. regex::try_compile is the form
+//   that does not throw, and takes the options too, so a validator needs no default timeout.
 // - A global search (find_all, captures_all) is a range that keeps the regex alive but not the text, as a
 //   std::string_view does not: the text must outlive it.
 //
@@ -55,7 +60,7 @@
 // The version of this library; it is the C library's, whose version the header names (CRE_VERSION_*).
 #define CORVUS_REGEX_ECMA262_CPP_VERSION_MAJOR 0
 #define CORVUS_REGEX_ECMA262_CPP_VERSION_MINOR 2
-#define CORVUS_REGEX_ECMA262_CPP_VERSION_PATCH 0
+#define CORVUS_REGEX_ECMA262_CPP_VERSION_PATCH 3
 
 namespace corvus::ecma262 {
 
@@ -114,6 +119,31 @@ class regex_error : public std::system_error {
   private:
     std::size_t offset_;
 };
+
+// The edition of ECMA-262 whose grammar a pattern is read with: today's, the default, or ECMAScript 2020's. The 2020
+// grammar refuses what later editions added: the d and v flags (errc::invalid_flags), modifier groups, a name given to
+// more than one group, and property names that are not in its edition's tables (each errc::invalid_pattern).
+enum class edition : std::uint32_t {
+    current = CRE_EDITION_CURRENT,
+    es2020 = CRE_EDITION_ES2020,
+};
+
+// The version of Unicode whose tables a pattern is read with (its properties and its case folding), independent of
+// the edition: v8, the version of the V8 the answers are held to (17 today); 13, 17 or 18; or latest, the latest the C
+// library carries (18 today).
+enum class unicode_version : std::uint32_t {
+    v8 = CRE_UNICODE_DEFAULT,
+    v13 = CRE_UNICODE_13,
+    v17 = CRE_UNICODE_17,
+    v18 = CRE_UNICODE_18,
+    latest = CRE_UNICODE_LATEST,
+};
+
+// The versions of Unicode a pattern can be read with; the one unicode_version::v8 stands for; and the one
+// unicode_version::latest stands for.
+inline constexpr std::array<int, 3> unicode_versions{13, 17, 18};
+inline constexpr int default_unicode_version = 17;
+inline constexpr int latest_unicode_version = 18;
 
 // The position of no match and of a group that did not take part.
 inline constexpr std::size_t npos = CRE_UNSET;
@@ -490,19 +520,49 @@ using u16captures_range = basic_captures_range<char16_t>;
 // A compiled ECMA-262 regular expression.
 class regex {
   public:
+    // How a pattern is compiled besides its flags: its match timeout (nullopt for the default timeout, zero for
+    // none), the edition whose grammar it is read with, and the version of Unicode whose tables it is read with.
+    struct options {
+        std::optional<std::chrono::milliseconds> match_timeout;
+        ecma262::edition edition = ecma262::edition::current;
+        ecma262::unicode_version unicode_version = ecma262::unicode_version::v8;
+    };
+
     // Compiles a pattern with the flags new RegExp(pattern, flags) takes, any of dgimsuvy. Throws regex_error:
     // errc::invalid_pattern, invalid_flags or pattern_too_large. A pattern given as UTF-16 is read as UTF-8, a lone
     // surrogate as U+FFFD.
     template <detail::text P>
     explicit regex(const P& pattern, std::string_view flags = {}) {
-        compile(detail::view(pattern), flags, std::nullopt);
+        compile(detail::view(pattern), flags, options{});
     }
 
     // As above, with a match timeout: the time each match may take before it is abandoned with errc::match_limit
     // (zero for none). A timeout also caps the backtracking memory of a match.
     template <detail::text P>
     regex(const P& pattern, std::string_view flags, std::chrono::milliseconds match_timeout) {
-        compile(detail::view(pattern), flags, match_timeout);
+        compile(detail::view(pattern), flags, options{match_timeout});
+    }
+
+    // As above, with the options: under edition::es2020 the d and v flags are errc::invalid_flags.
+    template <detail::text P>
+    regex(const P& pattern, std::string_view flags, const options& opts) {
+        compile(detail::view(pattern), flags, opts);
+    }
+
+    // The constructor that does not throw for the pattern: the regex, or nullopt with ec set to why (errc::
+    // invalid_pattern, invalid_flags or pattern_too_large). It takes the options, so a check of a pattern from outside
+    // gives it a timeout of its own without the default.
+    template <detail::text P>
+    static std::optional<regex> try_compile(const P& pattern, std::string_view flags, const options& opts,
+                                            std::error_code& ec) {
+        cre_regex* re = nullptr;
+        cre_status status = new_regex(detail::view(pattern), flags, opts, &re);
+        if (status != CRE_OK) {
+            ec = make_error_code(static_cast<errc>(status));
+            return std::nullopt;
+        }
+        ec.clear();
+        return regex(re);
     }
 
     // Sets the match timeout of every regex made from now on without one of its own, or nullopt (or zero) for none,
@@ -526,11 +586,25 @@ class regex {
     // here.
     template <detail::text P>
     static bool is_valid(const P& pattern, std::string_view flags = {}) {
+        return is_valid(pattern, flags, ecma262::edition::current, ecma262::unicode_version::v8);
+    }
+
+    // As above, in the grammar of an edition and under a version of Unicode.
+    template <detail::text P>
+    static bool is_valid(const P& pattern, std::string_view flags, ecma262::edition ed, ecma262::unicode_version uv) {
         std::string p = pattern_bytes(detail::view(pattern));
         bool valid = false;
-        detail::check(cre_regex_is_valid(p.data(), p.size(), flags.data(), flags.size(), &valid));
+        detail::check(cre_regex_is_valid_with_options(p.data(), p.size(), flags.data(), flags.size(),
+                                                      static_cast<std::uint32_t>(ed), static_cast<std::uint32_t>(uv),
+                                                      &valid));
         return valid;
     }
+
+    // The edition whose grammar the pattern was read with.
+    ecma262::edition edition() const noexcept { return static_cast<ecma262::edition>(cre_regex_edition(re_.get())); }
+
+    // The version of Unicode whose tables the pattern was read with, resolved: 13, 17 or 18.
+    int unicode_version() const noexcept { return static_cast<int>(cre_regex_unicode_version(re_.get())); }
 
     // The pattern as it was given (as UTF-8).
     std::string_view source() const noexcept { return sv(cre_regex_source(re_.get())); }
@@ -727,15 +801,30 @@ class regex {
         }
     }
 
-    template <class C>
-    void compile(std::basic_string_view<C> pattern, std::string_view flags,
-                 std::optional<std::chrono::milliseconds> timeout) {
-        std::string p = pattern_bytes(pattern);
-        cre_regex* re = nullptr;
-        detail::check(timeout ? cre_regex_new_with_timeout(p.data(), p.size(), flags.data(), flags.size(),
-                                                           detail::timeout_millis(*timeout), &re)
-                              : cre_regex_new(p.data(), p.size(), flags.data(), flags.size(), &re));
+    // A regex that owns a handle the C library made.
+    explicit regex(cre_regex* re) { own(re); }
+
+    void own(cre_regex* re) {
         re_ = std::shared_ptr<const cre_regex>(re, [](const cre_regex* r) { cre_regex_free(const_cast<cre_regex*>(r)); });
+    }
+
+    // Compiles with every setting given: the C library's status, and on CRE_OK the handle in *re. No timeout takes
+    // the default timeout.
+    template <class C>
+    static cre_status new_regex(std::basic_string_view<C> pattern, std::string_view flags, const options& opts,
+                                cre_regex** re) {
+        std::string p = pattern_bytes(pattern);
+        std::uint64_t ms = opts.match_timeout ? detail::timeout_millis(*opts.match_timeout) : cre_default_match_timeout();
+        return cre_regex_new_with_options(p.data(), p.size(), flags.data(), flags.size(), ms,
+                                          static_cast<std::uint32_t>(opts.edition),
+                                          static_cast<std::uint32_t>(opts.unicode_version), re);
+    }
+
+    template <class C>
+    void compile(std::basic_string_view<C> pattern, std::string_view flags, const options& opts) {
+        cre_regex* re = nullptr;
+        detail::check(new_regex(pattern, flags, opts, &re));
+        own(re);
     }
 
     static std::string_view sv(cre_str s) noexcept { return s.ptr ? std::string_view(s.ptr, s.len) : std::string_view(); }

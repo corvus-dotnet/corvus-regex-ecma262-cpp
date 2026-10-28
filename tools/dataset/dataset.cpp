@@ -4,6 +4,7 @@
 //
 //   dataset <data directory> <wrong-cases output file> [--engine corvus|std|boost|srell] [--files <filter>]
 //           [--encodings utf16|utf8|both] [--isolate on] [--compliance <file>]
+//           [--edition current|es2020] [--unicode 13|17|18|latest]
 //
 // With --engine corvus (the default) it judges this library, through corvus/regex_ecma262.hpp alone: is_match, find,
 // captures, captures_all, find_all, replace, replace_all and split, over UTF-16 and UTF-8. The other engines, which a
@@ -23,6 +24,10 @@
 // lastIndex is not between the halves of a pair, one over UTF-8 with positions in bytes. A record is asked in the one
 // grammar its flags give (v, u, or neither), and only where the engine implements it. The other engines are given the
 // flags without g and d (the runner reads lastIndex, and exec gives the indices) and keep y, which each honours.
+//
+// --edition and --unicode compile every pattern with that edition and version of Unicode (this library alone), for the
+// data as its own scripts write it for them (edition.js apply and unicode.js apply in the data repository). Under es2020
+// a refusal of the d or v flag is a refusal of the pattern, as the data's overlay counts it.
 //
 // With --compliance <file>, the engine's compliance object is written to the file, as the benchmark page reads it
 // (docs/implementing-a-source.md in corvus-regex-ecma262-benchmarks): the counts, this runner and the calls it makes in
@@ -90,6 +95,7 @@ struct counts {
 struct options {
     bool utf16 = true, utf8 = true;
     dataset::exec_engine* exec = nullptr;  // nullptr: this library
+    re::regex::options settings;           // this library's edition and version of Unicode (--edition, --unicode)
 };
 
 std::u16string_view units(const json* s) {
@@ -249,12 +255,14 @@ compiled compile(const options& o, std::u16string_view pattern, const std::strin
         return c;
     }
     try {
-        c.corvus.emplace(pattern, flags);
+        c.corvus.emplace(pattern, flags, o.settings);
     } catch (const re::regex_error& e) {
         if (e.reason() == re::errc::invalid_pattern) {
             message = std::string("PARSE: ") + e.what();
         } else if (e.reason() == re::errc::pattern_too_large) {
             message = std::string("TOO-LARGE: ") + e.what();
+        } else if (e.reason() == re::errc::invalid_flags && o.settings.edition == re::edition::es2020) {
+            message = std::string("FLAGS: ") + e.what();
         } else {
             is_error = true;
             message = std::string("ERROR: ") + e.what();
@@ -1454,13 +1462,14 @@ int main(int argc, char** argv) {
     if (argc < 3) {
         std::fprintf(stderr,
                      "usage: %s <data directory> <wrong-cases file> [--engine corvus|...] [--files <filter>] "
-                     "[--encodings utf16|utf8|both] [--isolate on] [--compliance <file>]\n",
+                     "[--encodings utf16|utf8|both] [--isolate on] [--compliance <file>] "
+                     "[--edition current|es2020] [--unicode 13|17|18|latest]\n",
                      argv[0]);
         return 2;
     }
     std::string directory = argv[1], wrong_path = argv[2], filter = "*.jsonl", encodings = "both", engine = "corvus";
     bool isolate = false;
-    std::string compliance;
+    std::string compliance, edition = "current", unicode;
     for (int k = 3; k + 1 < argc; k += 2) {
         std::string_view flag = argv[k];
         if (flag == "--isolate") {
@@ -1473,6 +1482,10 @@ int main(int argc, char** argv) {
             encodings = argv[k + 1];
         } else if (flag == "--compliance") {
             compliance = argv[k + 1];
+        } else if (flag == "--edition") {
+            edition = argv[k + 1];
+        } else if (flag == "--unicode") {
+            unicode = argv[k + 1];
         } else {
             std::fprintf(stderr, "unknown option %s\n", argv[k]);
             return 2;
@@ -1481,6 +1494,24 @@ int main(int argc, char** argv) {
     options o;
     o.utf16 = encodings == "both" || encodings == "utf16";
     o.utf8 = encodings == "both" || encodings == "utf8";
+    if (edition == "es2020") {
+        o.settings.edition = re::edition::es2020;
+    } else if (edition != "current") {
+        std::fprintf(stderr, "--edition must be current or es2020\n");
+        return 2;
+    }
+    if (unicode == "13") {
+        o.settings.unicode_version = re::unicode_version::v13;
+    } else if (unicode == "17") {
+        o.settings.unicode_version = re::unicode_version::v17;
+    } else if (unicode == "18") {
+        o.settings.unicode_version = re::unicode_version::v18;
+    } else if (unicode == "latest") {
+        o.settings.unicode_version = re::unicode_version::latest;
+    } else if (!unicode.empty()) {
+        std::fprintf(stderr, "--unicode must be 13, 17, 18 or latest\n");
+        return 2;
+    }
     std::unique_ptr<dataset::exec_engine> exec;
     if (engine != "corvus") {
         exec = dataset::make_exec_engine(engine);

@@ -22,7 +22,8 @@ over the [corvus-regex-ecma262](https://github.com/corvus-dotnet/corvus-regex-ec
 data](https://github.com/corvus-dotnet/ecma262-regex-test-data) (what V8 says about its patterns and texts, test262's
 patterns and `exec` calls, the global search, `replace` and `split` among them, and texts of bytes that are not UTF-8,
 which it refuses), the library gives every answer right and none wrong, refuses no valid pattern, accepts no invalid
-one and reaches no limit, over UTF-8 and UTF-16. CI runs the whole data on Linux and Windows on every change.
+one and reaches no limit, over UTF-8 and UTF-16. CI runs the whole data on Linux and Windows on every change, and on
+Linux the data as its own scripts write it for Unicode 13 and 18 and for the grammar of ECMAScript 2020.
 
 ## Install
 
@@ -36,7 +37,7 @@ With FetchContent:
 include(FetchContent)
 FetchContent_Declare(corvus_regex_ecma262_cpp
   GIT_REPOSITORY https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp
-  GIT_TAG v0.2.1)
+  GIT_TAG v0.2.3)
 FetchContent_MakeAvailable(corvus_regex_ecma262_cpp)
 
 target_link_libraries(app PRIVATE corvus_regex_ecma262_cpp::corvus_regex_ecma262_cpp)
@@ -97,9 +98,10 @@ The whole example is [examples/basic.cpp](examples/basic.cpp), which CI builds a
 
 | Member | What it does |
 |---|---|
-| `regex(pattern, flags)`, `regex(pattern, flags, match_timeout)` | Compiles a pattern as `new RegExp(pattern, flags)` does; throws `regex_error` when it is not valid. `match_timeout` is a `std::chrono::milliseconds` (zero for none); without it the regex takes the default. |
+| `regex(pattern, flags)`, `regex(pattern, flags, match_timeout)`, `regex(pattern, flags, options)` | Compiles a pattern as `new RegExp(pattern, flags)` does; throws `regex_error` when it is not valid. `match_timeout` is a `std::chrono::milliseconds` (zero for none); without it the regex takes the default. `regex::options` holds a `match_timeout`, an `edition` and a `unicode_version` (below). |
+| `regex::try_compile(pattern, flags, options, ec)` | The constructor that does not throw for the pattern: an `optional<regex>`, empty with `ec` set to why. |
 | `regex::set_default_match_timeout(timeout)`, `regex::default_match_timeout()` | The timeout of every regex made without one: none (`nullopt`) unless set. |
-| `regex::is_valid(pattern, flags)` | Whether a pattern is valid, without compiling it. |
+| `regex::is_valid(pattern, flags)`, `regex::is_valid(pattern, flags, edition, unicode_version)` | Whether a pattern is valid, without compiling it. |
 | `is_match(text, start = 0)` | `RegExp.prototype.test` with `lastIndex` at `start` (at `start` alone with `y`). |
 | `find(text, start = 0)` | The first match at or after `start`, as `exec` finds it: an `optional<match>`. |
 | `captures(text, start = 0)` | The first match with its groups, by number and by name: an `optional<captures>`. |
@@ -109,7 +111,7 @@ The whole example is [examples/basic.cpp](examples/basic.cpp), which CI builds a
 | `replace(text, replacement)` | `String.prototype.replace`: the first match, or every match with `g`. |
 | `replace_all(text, replacement)` | `String.prototype.replaceAll`: every match. |
 | `split(text, limit = no_limit)` | `String.prototype.split`: a vector of `optional<string>`. |
-| `source()`, `flags()`, `match_timeout()`, `group_count()`, `group_names()` | What the pattern is. |
+| `source()`, `flags()`, `match_timeout()`, `edition()`, `unicode_version()`, `group_count()`, `group_names()` | What the pattern is. |
 
 A `match` is a `start` and an `end` in the text's units; a group that did not take part is `npos` to `npos` and is
 `false`, and `m.in(text)` is its part of the text.
@@ -119,7 +121,27 @@ made after it `regex::set_default_match_timeout(1000ms)`. Every member that matc
 timeout, and a match that reaches it, or the cap on backtracking memory that comes with it, throws
 `errc::match_limit`; the `find`, `is_match` and `captures` overloads that take a `std::chrono::milliseconds` give one
 match a limit of their own in its place. Without a timeout (the default) a match has no limit of time or of memory, so
-a program that matches a pattern or a text it did not write should set one.
+a program that matches a pattern or a text it did not write should set one. `regex::try_compile` takes the timeout in
+its options, so a validator that checks patterns from outside needs no default timeout, and no exceptions.
+
+**The edition and the version of Unicode.** Two settings, each independent of the other, are settled when a pattern is
+compiled and cost a match nothing:
+
+- `edition::es2020` reads the pattern with the grammar of ECMAScript 2020, which JSON Schema 2020-12 names. It refuses
+  what later editions added, and nothing else: the `d` and `v` flags (`errc::invalid_flags`), modifier groups such as
+  `(?i:...)`, a group name used by two groups, and a property name or value that is not in that edition's tables, such
+  as `\p{Script=Yezidi}` (each `errc::invalid_pattern`). A pattern it accepts has the same answers as in today's
+  grammar. `edition::current`, the default, is today's grammar.
+- `unicode_version` is the version of Unicode whose tables the pattern is read with: the members of each `\p{...}`,
+  the characters of a group name, and case folding. It is `unicode_version::v8` (the default: the version of the V8
+  the answers are held to, 17 today), `v13`, `v17`, `v18` or `latest` (18 today). `unicode_version()` gives the version
+  it resolved to, and `unicode_versions`, `default_unicode_version` and `latest_unicode_version` list them.
+
+```cpp
+std::error_code ec;
+auto schema = re::regex::try_compile(R"(^\p{L}+$)", "u",
+                                     {std::chrono::seconds(1), re::edition::es2020, re::unicode_version::v13}, ec);
+```
 
 **Text and positions.** UTF-8 text is checked: text that is not UTF-8 throws `errc::invalid_utf8`, and
 `regex_error::offset()` is the offset of the first bad byte. UTF-16 text is not checked, and may hold lone surrogates.
