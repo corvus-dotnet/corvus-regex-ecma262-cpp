@@ -108,11 +108,13 @@ not the one it checks out.
 
 ## 7. Releases
 
-The library's version follows the C library's, so a release is made by hand: when the C library releases, a pull
-request moves the version and the archives' hashes (section 4), and once it is merged a GitHub release is made, tagged
-`v<version>`. The documentation site takes the published documents from the latest release, so a change to them ships
-with the next one. A change to the benchmark harness alone is a harness release (`gh release create
-harness-<version>.<n> --latest=false`), which publishes the harness image.
+The library's version follows the C library's, so a release is made by hand: when the C library releases, a pull request
+moves the version and the archives' hashes (section 4), and once it is merged a GitHub release is made, tagged
+`v<version>`. A change to the benchmark harness alone is a harness release (`gh release create harness-<version>.<n>
+--latest=false`), which publishes the harness image. The documentation site takes the published documents (the
+getting-started page, the API reference, the design document and this guide) from `main`, and they describe the latest
+release: a change to them alone needs no release, and a change to the API carries its documents and is released straight
+after it is merged.
 
 `main` is protected by a ruleset: changes arrive by pull request, and the `CI gate` and `Harness image` checks must be
 green on the branch as it will merge.
