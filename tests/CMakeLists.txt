@@ -25,9 +25,9 @@ if(WIN32)
     COMMAND_EXPAND_LISTS)
 endif()
 
-# The C++ programs of the getting-started page the documentation site publishes (docs/getting-started.md), each block
-# of C++ a program of its own, built with the tests' warnings and with assert on, and run, so that the page shows only
-# code that works.
+# The C++ programs of the getting-started page the documentation site publishes (docs/getting-started.md): each block
+# of C++ with a main is a program of its own, built with the tests' warnings and with assert on, and run, so that the
+# page shows only code that works.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/docs/getting-started.md")
 file(READ "${PROJECT_SOURCE_DIR}/docs/getting-started.md" doc)
 set(n 0)
@@ -42,6 +42,11 @@ while(TRUE)
   string(SUBSTRING "${doc}" 0 ${end} code)
   math(EXPR end "${end} + 4")
   string(SUBSTRING "${doc}" ${end} -1 doc)
+  # A block that is not a whole program, such as the #include of Setup, is not built.
+  string(FIND "${code}" "int main(" has_main)
+  if(has_main EQUAL -1)
+    continue()
+  endif()
   math(EXPR n "${n} + 1")
   file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/getting_started_${n}.cpp" "${code}\n")
   add_executable(getting_started_${n} "${CMAKE_CURRENT_BINARY_DIR}/getting_started_${n}.cpp")
