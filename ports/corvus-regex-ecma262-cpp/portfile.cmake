@@ -2,7 +2,7 @@
 # the archive's shared library for a dynamic triplet, its static library (built for the C runtime the triplet links)
 # for a static one. The C library is Rust, built and tested in its own repository's CI for each platform; the archive
 # is checked against the hash recorded here.
-set(CRE_C_VERSION 0.2.3)
+set(CRE_C_VERSION 0.2.5)
 
 # CORVUS_REGEX_ECMA262_CPP_SOURCE (passed through with VCPKG_KEEP_ENV_VARS) builds the port from a checkout instead,
 # as this repository's CI does to test the port with the commit it runs on.
@@ -32,12 +32,12 @@ else()
     set(cre_target ${cre_arch}-unknown-linux-gnu)
     set(cre_extension tar.gz)
 endif()
-set(cre_sha512_aarch64-apple-darwin aa6265c2ef713c92b5b8a81de798def917e1cef16f4f3acb9fadc8c39ca3dcf2fd69c5c708d224b73a751fc63d6b19f1183f8fa3ea624f6157f85e53eba5b706)
-set(cre_sha512_aarch64-unknown-linux-gnu 5a3eaa7e0978092a4b278e19815bf6be5ea489d7949c417d843d155c2b336d149c3c49892695d5474e95bc7927d3ea4f0169371adb6aa78617fbae9cc7590690)
-set(cre_sha512_x86_64-apple-darwin 738d06fdc72798a1c4f6cbce5530895a30a72cf9a01a5579fcd11d48c20d36e2a2c9d35f24087b2d0219bec4220c9e2023f9ffe7832e96ca551a8300497fc35a)
-set(cre_sha512_x86_64-unknown-linux-gnu 50916274e8254b8e0879fcf4d1d49da254d23ac3080c65e0d518cfe281be0a75739058a792cf525bd1ee3f4840bbf74517b958a8514148c386966bfb0d7c37c4)
-set(cre_sha512_aarch64-pc-windows-msvc aa758942ea18af9003e8d8401f9b3957ac88a520aece501e9326bff10809d3e5331f95add1edd9f61abb11ff32c2ff311f4e3abdb2db1d44e79415c5ee1d96af)
-set(cre_sha512_x86_64-pc-windows-msvc def2db7ef39c7c39fa2072bbceae784a0aba60ce1c9d11016511b7527815bd331576c7d80fa439f08352d276e1ce37d456dbfda417d3301dccd72c63b6550fb7)
+set(cre_sha512_aarch64-apple-darwin ca4e70b48a1f9b01567baefc0c7a891ada8edc8a099bacc6bf539145990fb46b776291f7631ad3bc7ba11c25748bb63fc8f75f5eedcb546011d0fefcb9ce6c3b)
+set(cre_sha512_aarch64-unknown-linux-gnu 4a9a1b27299126604e31ce1e2b4590bee15917d061187edaf8a3d8fd5f50cf779c4f53de36ce4668ababbeafd570e7da92ef5db7412bbab73a14a45a06d0027c)
+set(cre_sha512_x86_64-apple-darwin d874e64baf4b64006c67a3aa5c8511963973b8627e8446b06f9e296fc4f83357b6e04444e62ecda1085bb1b78fcebbdcdc9fed0d4cf2cefcf32121f4f7cbe639)
+set(cre_sha512_x86_64-unknown-linux-gnu 22786aa7f59b22449e4da097b33ce61ab9b542aa24b9a3b7ab2828bb7db7262db46663b60e712b1587709135dd2f04ea26a9f74b1f27763f498a2c25c70555fb)
+set(cre_sha512_aarch64-pc-windows-msvc 80ef465e7efb6bd1697151d955de7c0f5ab556dddb05fe85222ade98dab05d56228706413e8740fbf5cc475db56cc4deef8dd1e2bbc6858c365b3cb307af2a46)
+set(cre_sha512_x86_64-pc-windows-msvc 505320a21355a0b65d1a87b7271b5e88f4a2b1c8f674a2648c8cef2373341672a0831587107bddce4e04457df6ab07d09329064cba251a91bbb398edf9b1ce03)
 
 vcpkg_download_distfile(C_ARCHIVE
     URLS "https://github.com/corvus-dotnet/corvus-regex-ecma262-rs/releases/download/v${CRE_C_VERSION}/corvus-regex-ecma262-${CRE_C_VERSION}-${cre_target}.${cre_extension}"
