@@ -60,7 +60,7 @@
 // The version of this library; it is the C library's, whose version the header names (CRE_VERSION_*).
 #define CORVUS_REGEX_ECMA262_CPP_VERSION_MAJOR 0
 #define CORVUS_REGEX_ECMA262_CPP_VERSION_MINOR 2
-#define CORVUS_REGEX_ECMA262_CPP_VERSION_PATCH 3
+#define CORVUS_REGEX_ECMA262_CPP_VERSION_PATCH 5
 
 namespace corvus::ecma262 {
 

@@ -1,9 +1,9 @@
 {
- "right": 4415924,
- "wrong": 71330,
- "refused": 146881,
+ "right": 4434954,
+ "wrong": 71329,
+ "refused": 146883,
  "acceptedInvalid": 458,
- "limited": 5728,
+ "limited": 6031,
  "judge": {
   "runner": "https://github.com/corvus-dotnet/corvus-regex-ecma262-cpp/blob/main/tools/dataset/dataset.cpp",
   "calls": {
@@ -34,5 +34,5 @@
    ]
   }
  ],
- "dataCommit": "1b4c4353c4fa3fc3e318db32ef0261391519b9a5"
+ "dataCommit": "36e8b71c181fa10554760f461dc8c526fd3ffb42"
 }

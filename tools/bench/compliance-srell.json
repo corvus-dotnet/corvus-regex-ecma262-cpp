@@ -1,5 +1,5 @@
 {
- "right": 7700658,
+ "right": 7719998,
  "wrong": 5747,
  "refused": 2428,
  "acceptedInvalid": 77,
@@ -37,5 +37,5 @@
    ]
   }
  ],
- "dataCommit": "1b4c4353c4fa3fc3e318db32ef0261391519b9a5"
+ "dataCommit": "36e8b71c181fa10554760f461dc8c526fd3ffb42"
 }
